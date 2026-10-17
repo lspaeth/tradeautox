@@ -5,6 +5,9 @@
 <div class="alert warn"><strong>TradeAutoX is not a party to this transaction.</strong> All sales are strictly between buyer and seller, as-is.</div>
 
 <h1><%= listing.year %> <%= listing.make %> <%= listing.model %></h1>
+<% if (listing.verification_report) { %>
+  <p><span class="verified-badge">✓ Verified</span> <span class="muted small">Seller provided a diagnostic verification report — <a href="<%= listing.verification_report %>" target="_blank" rel="noopener">view report</a></span></p>
+<% } %>
 <p class="price-lg"><%= fmtMoney(listing.price) %></p>
 
 <% if (photos.length) { %>

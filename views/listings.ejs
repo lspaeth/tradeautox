@@ -16,7 +16,7 @@
     <% listings.forEach(l => { %>
       <a class="listing-card" href="/listings/<%= l.id %>">
         <div class="listing-card-body">
-          <h3><%= l.year %> <%= l.make %> <%= l.model %></h3>
+          <h3><%= l.year %> <%= l.make %> <%= l.model %><% if (l.verification_report) { %> <span class="verified-badge sm">✓</span><% } %></h3>
           <p class="price"><%= fmtMoney(l.price) %></p>
           <p class="muted small"><%= l.dealership_name %></p>
         </div>

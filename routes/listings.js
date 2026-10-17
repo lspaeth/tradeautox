@@ -17,8 +17,8 @@ router.get('/new', requireMember, (req, res) => {
   res.render('listing-new', { error: null });
 });
 
-// Create listing (up to 8 photos)
-router.post('/', requireMember, upload.array('photos', 8), (req, res) => {
+// Create listing (up to 8 photos + optional verification report)
+router.post('/', requireMember, upload.listingUpload, (req, res) => {
   try {
     const { make, model, year, vin, mileage, price, description } = req.body;
     if (!make || !model || !year || !price) {
@@ -38,8 +38,9 @@ router.post('/', requireMember, upload.array('photos', 8), (req, res) => {
       mileage: mileage ? parseInt(String(mileage).replace(/[^0-9]/g, ''), 10) || null : null,
       price: priceNum,
       description: (description || '').trim(),
+      verification_report: req.files && req.files.verification_report ? `/uploads/${req.files.verification_report[0].filename}` : null,
     });
-    for (const f of req.files || []) {
+    for (const f of (req.files && req.files.photos) || []) {
       db.addListingPhoto(info.lastInsertRowid, `/uploads/${f.filename}`);
     }
     res.redirect(`/listings/${info.lastInsertRowid}`);

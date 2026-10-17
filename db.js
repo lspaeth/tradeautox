@@ -52,6 +52,13 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migration for databases created before verification_report existed.
+try {
+  db.exec(`ALTER TABLE listings ADD COLUMN verification_report TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at)
@@ -79,8 +86,8 @@ const listAllDealers = () =>
 
 // ---- listings ----
 const createListing = (l) => db.prepare(`
-  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description)
-  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description)
+  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report)
+  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report)
 `).run(l);
 
 const addListingPhoto = (listingId, p) =>

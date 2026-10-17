@@ -80,6 +80,10 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
 .pill-pending, .pill-past_due { background: #451a03; color: #fcd34d; }
 .pill-rejected, .pill-inactive, .pill-none { background: #450a0a; color: #fca5a5; }
 
+/* verified badge */
+.verified-badge { display: inline-block; background: var(--brand); color: #fff; font-weight: 800; font-size: 0.85rem; padding: 3px 12px; border-radius: 999px; letter-spacing: 0.5px; }
+.verified-badge.sm { font-size: 0.7rem; padding: 1px 8px; vertical-align: middle; }
+
 /* listings */
 .filters { display: flex; gap: 10px; margin: 16px 0 24px; flex-wrap: wrap; }
 .filters input { padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 1rem; }
