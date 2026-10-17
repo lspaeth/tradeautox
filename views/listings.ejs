@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+
+<h1>Wholesale board</h1>
+
+<form class="filters" method="get" action="/listings">
+  <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
+  <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
+  <button class="btn btn-sm" type="submit">Filter</button>
+  <% if (filters.make || filters.max_price) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
+</form>
+
+<% if (!listings.length) { %>
+  <p class="muted">No listings match.</p>
+<% } else { %>
+  <div class="grid">
+    <% listings.forEach(l => { %>
+      <a class="listing-card" href="/listings/<%= l.id %>">
+        <div class="listing-card-body">
+          <h3><%= l.year %> <%= l.make %> <%= l.model %></h3>
+          <p class="price"><%= fmtMoney(l.price) %></p>
+          <p class="muted small"><%= l.dealership_name %></p>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

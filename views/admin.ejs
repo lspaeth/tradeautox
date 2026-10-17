@@ -1,0 +1,49 @@
+<%- include('partials/header') %>
+
+<h1>Admin panel</h1>
+
+<section class="panel">
+  <h2>Pending applications (<%= pending.length %>)</h2>
+  <% if (!pending.length) { %>
+    <p class="muted">No pending applications.</p>
+  <% } else { %>
+    <table class="table">
+      <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Applied</th><th></th></tr>
+      <% pending.forEach(d => { %>
+        <tr>
+          <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span></td>
+          <td><%= d.contact_name %></td>
+          <td><%= d.license_number %></td>
+          <td><% if (d.license_photo_path) { %><a href="<%= d.license_photo_path %>" target="_blank" rel="noopener">View</a><% } else { %><span class="muted">—</span><% } %></td>
+          <td class="small"><%= d.created_at %></td>
+          <td>
+            <form method="post" action="/admin/dealers/<%= d.id %>/approve" style="display:inline">
+              <button class="btn btn-xs" type="submit">Approve</button>
+            </form>
+            <form method="post" action="/admin/dealers/<%= d.id %>/reject" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Reject this application?')">Reject</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>All dealers (<%= members.length %>)</h2>
+  <table class="table">
+    <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th></tr>
+    <% members.forEach(d => { %>
+      <tr>
+        <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %></span></td>
+        <td><span class="pill pill-<%= d.status %>"><%= d.status %></span></td>
+        <td><span class="pill pill-<%= d.membership_status %>"><%= d.membership_status %></span></td>
+        <td class="muted small"><%= d.stripe_customer_id || '—' %></td>
+      </tr>
+    <% }) %>
+  </table>
+  <p class="muted small">Refunds: issue them in the <a href="https://dashboard.stripe.com/payments" target="_blank" rel="noopener">Stripe Dashboard → Payments</a>. Find the payment, click Refund. No code needed — this is handled natively by Stripe.</p>
+</section>
+
+<%- include('partials/footer') %>

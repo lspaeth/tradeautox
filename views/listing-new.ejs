@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+
+<h1>Sell a vehicle</h1>
+<p class="muted">Unlimited listings included with your membership. Up to 8 photos.</p>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+
+<form class="form" method="post" action="/listings" enctype="multipart/form-data">
+  <div class="row">
+    <label>Make *<input name="make" required></label>
+    <label>Model *<input name="model" required></label>
+    <label>Year *<input name="year" inputmode="numeric" required></label>
+  </div>
+  <div class="row">
+    <label>VIN<input name="vin" maxlength="17"></label>
+    <label>Mileage<input name="mileage" inputmode="numeric"></label>
+    <label>Asking price (USD) *<input name="price" inputmode="numeric" required></label>
+  </div>
+  <label>Description
+    <textarea name="description" rows="5" placeholder="Condition, options, history, title status…"></textarea>
+  </label>
+  <label>Photos <span class="muted small">(up to 8 images)</span>
+    <input type="file" name="photos" accept="image/*" multiple>
+  </label>
+  <button class="btn" type="submit">Post listing</button>
+</form>
+
+<%- include('partials/footer') %>

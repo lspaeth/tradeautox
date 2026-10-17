@@ -1,0 +1,23 @@
+{
+  "name": "tradeautox",
+  "version": "1.0.0",
+  "description": "TradeAutoX — B2B wholesale vehicle marketplace for licensed dealers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "setup-stripe": "node scripts/setup-stripe.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.10.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.2",
+    "stripe": "^17.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

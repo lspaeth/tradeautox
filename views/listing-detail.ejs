@@ -1,0 +1,32 @@
+<%- include('partials/header') %>
+
+<p><a href="/listings">&larr; Back to board</a></p>
+
+<div class="alert warn"><strong>TradeAutoX is not a party to this transaction.</strong> All sales are strictly between buyer and seller, as-is.</div>
+
+<h1><%= listing.year %> <%= listing.make %> <%= listing.model %></h1>
+<p class="price-lg"><%= fmtMoney(listing.price) %></p>
+
+<% if (photos.length) { %>
+  <div class="photo-grid">
+    <% photos.forEach(p => { %>
+      <a href="<%= p.path %>" target="_blank" rel="noopener"><img src="<%= p.path %>" alt="Vehicle photo"></a>
+    <% }) %>
+  </div>
+<% } %>
+
+<dl class="specs">
+  <% if (listing.vin) { %><dt>VIN</dt><dd><%= listing.vin %></dd><% } %>
+  <% if (listing.mileage) { %><dt>Mileage</dt><dd><%= Number(listing.mileage).toLocaleString() %> mi</dd><% } %>
+  <dt>Seller</dt><dd><%= listing.dealership_name %></dd>
+  <dt>Contact</dt><dd><%= listing.contact_name %><% if (listing.phone) { %> — <%= listing.phone %><% } %></dd>
+</dl>
+
+<% if (listing.description) { %>
+  <h2>Description</h2>
+  <p class="pre"><%= listing.description %></p>
+<% } %>
+
+<p class="muted small">Listed <%= listing.created_at %>. Dealers transact directly — TradeAutoX charges no per-vehicle fees.</p>
+
+<%- include('partials/footer') %>

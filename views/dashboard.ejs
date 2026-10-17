@@ -1,0 +1,65 @@
+<%- include('partials/header') %>
+
+<h1>Dashboard</h1>
+<p class="muted"><%= dealer.dealership_name %> — <%= dealer.contact_name %> (<%= dealer.email %>)</p>
+
+<section class="panel">
+  <h2>Membership</h2>
+  <% if (dealer.status === 'pending') { %>
+    <p class="alert warn"><strong>Application under review.</strong> We verify every wholesale license before activation. You'll be able to activate your membership once approved.</p>
+  <% } else if (dealer.status === 'rejected') { %>
+    <p class="alert error">This application was not approved. Please contact support.</p>
+  <% } else if (dealer.membership_status === 'active') { %>
+    <p class="alert ok"><strong>Active member.</strong> Your $599/month membership is current.</p>
+    <form method="post" action="/billing/portal" style="display:inline">
+      <button class="btn btn-sm" type="submit">Manage billing</button>
+    </form>
+    <p class="muted small">Update your card, view invoices, or cancel from the secure billing portal.</p>
+  <% } else if (dealer.membership_status === 'past_due') { %>
+    <p class="alert error"><strong>Payment past due.</strong> Update your payment method to keep trading.</p>
+    <form method="post" action="/billing/portal" style="display:inline">
+      <button class="btn btn-sm" type="submit">Update payment method</button>
+    </form>
+  <% } else { %>
+    <p><strong>You're approved!</strong> Activate your $599/month membership to start buying and selling.</p>
+    <% if (stripeConfigured) { %>
+      <form method="post" action="/billing/checkout">
+        <button class="btn" type="submit">Activate membership — $599/mo</button>
+      </form>
+    <% } else { %>
+      <p class="alert warn">Online billing isn't configured on this server yet. Contact the site administrator to activate.</p>
+    <% } %>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>My listings <a class="btn btn-sm" href="/listings/new">+ New listing</a></h2>
+  <% if (!listings.length) { %>
+    <p class="muted">No listings yet.</p>
+  <% } else { %>
+    <table class="table">
+      <tr><th>Vehicle</th><th>Price</th><th>Status</th><th></th></tr>
+      <% listings.forEach(l => { %>
+        <tr>
+          <td><a href="/listings/<%= l.id %>"><%= l.year %> <%= l.make %> <%= l.model %></a></td>
+          <td><%= fmtMoney(l.price) %></td>
+          <td><%= l.status %></td>
+          <td>
+            <% if (l.status === 'active') { %>
+              <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
+                <input type="hidden" name="status" value="sold">
+                <button class="btn btn-xs" type="submit">Mark sold</button>
+              </form>
+              <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
+                <input type="hidden" name="status" value="removed">
+                <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </table>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

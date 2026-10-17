@@ -1,0 +1,11 @@
+<%- include('partials/header') %>
+
+<h1>Admin login</h1>
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<form class="form" method="post" action="/admin/login">
+  <label>Email<input type="email" name="email" required></label>
+  <label>Password<input type="password" name="password" required></label>
+  <button class="btn" type="submit">Log in</button>
+</form>
+
+<%- include('partials/footer') %>

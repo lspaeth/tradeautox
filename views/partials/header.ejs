@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= typeof title !== 'undefined' ? title + ' — ' : '' %>TradeAutoX</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/">TRADE<span>AUTO</span>X</a>
+    <nav>
+      <% if (currentDealer) { %>
+        <a href="/listings">Browse</a>
+        <a href="/listings/new">Sell a vehicle</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Log out</a>
+      <% } else if (isAdmin) { %>
+        <a href="/admin">Admin</a>
+        <a href="/admin/logout">Log out</a>
+      <% } else { %>
+        <a href="/login">Dealer login</a>
+        <a class="btn btn-sm" href="/signup">Join — $599/mo</a>
+      <% } %>
+    </nav>
+  </div>
+</header>
+<main class="wrap">

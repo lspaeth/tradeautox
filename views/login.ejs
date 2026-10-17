@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+
+<h1>Dealer login</h1>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<% if (notice) { %><p class="alert ok"><%= notice %></p><% } %>
+
+<form class="form" method="post" action="/login">
+  <label>Email
+    <input type="email" name="email" required>
+  </label>
+  <label>Password
+    <input type="password" name="password" required>
+  </label>
+  <button class="btn" type="submit">Log in</button>
+</form>
+<p class="muted">No account yet? <a href="/signup">Apply for membership</a>.</p>
+
+<%- include('partials/footer') %>

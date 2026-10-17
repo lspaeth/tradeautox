@@ -1,0 +1,37 @@
+<%- include('partials/header') %>
+
+<h1>Dealer application</h1>
+<p class="muted">Membership is <strong>$599/month</strong>, billed after approval. A valid wholesale license is required.</p>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+
+<form class="form" method="post" action="/signup" enctype="multipart/form-data">
+  <label>Dealership name *
+    <input name="dealership_name" required>
+  </label>
+  <label>Contact name *
+    <input name="contact_name" required>
+  </label>
+  <label>Email *
+    <input type="email" name="email" required>
+  </label>
+  <label>Password * <span class="muted small">(min 8 characters)</span>
+    <input type="password" name="password" minlength="8" required>
+  </label>
+  <label>Phone
+    <input name="phone" type="tel">
+  </label>
+  <label>Wholesale license number *
+    <input name="license_number" required>
+  </label>
+  <label>License photo <span class="muted small">(image upload)</span>
+    <input type="file" name="license_photo" accept="image/*">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="accept_terms" value="1" required>
+    I accept the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> *
+  </label>
+  <button class="btn" type="submit">Submit application</button>
+</form>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,15 @@
+<%- include('partials/header') %>
+
+<h1>Membership activated</h1>
+<% if (dealer.membership_status === 'active') { %>
+  <p class="alert ok"><strong>You're in.</strong> Your $599/month TradeAutoX membership is active — unlimited buying and selling, no auction fees.</p>
+  <div class="cta-row">
+    <a class="btn" href="/listings">Browse the board</a>
+    <a class="btn btn-ghost" href="/listings/new">Post a vehicle</a>
+  </div>
+<% } else { %>
+  <p class="alert warn">Your payment is being confirmed — this usually takes under a minute. If your dashboard still shows inactive, wait a moment and refresh.</p>
+  <a class="btn" href="/dashboard">Go to dashboard</a>
+<% } %>
+
+<%- include('partials/footer') %>
