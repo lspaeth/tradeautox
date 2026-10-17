@@ -10,8 +10,9 @@ const billing = require('./routes/billing');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Uploads directory (gitignored; needs persistent disk in production)
-const uploadsDir = path.join(__dirname, 'uploads');
+// Uploads directory (gitignored; on Railway this lives on the persistent volume via DATA_DIR)
+const dataDir = process.env.DATA_DIR || __dirname;
+const uploadsDir = path.join(dataDir, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // Stripe webhook MUST come before express.json() — signature verification needs the raw body
