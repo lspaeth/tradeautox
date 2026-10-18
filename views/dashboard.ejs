@@ -37,7 +37,7 @@
   <% if (!listings.length) { %>
     <p class="muted">No listings yet.</p>
   <% } else { %>
-    <table class="table">
+    <div class="table-scroll"><table class="table">
       <tr><th>Vehicle</th><th>Price</th><th>Status</th><th></th></tr>
       <% listings.forEach(l => { %>
         <tr>
@@ -58,7 +58,7 @@
           </td>
         </tr>
       <% }) %>
-    </table>
+    </table></div>
   <% } %>
 </section>
 

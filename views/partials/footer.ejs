@@ -6,5 +6,34 @@
     <p class="muted small"><a href="/terms">Terms of Service</a> — TradeAutoX is a listing venue only, not a party to any transaction.</p>
   </div>
 </footer>
+<div id="install-banner" class="install-banner" hidden>
+  <span>Install the TradeAutoX app for quick photo uploads.</span>
+  <button id="install-btn" class="btn btn-sm" type="button">Install</button>
+  <button id="install-dismiss" class="install-dismiss" type="button" aria-label="Dismiss">&times;</button>
+</div>
+<script>
+(function () {
+  let deferredPrompt = null;
+  const banner = document.getElementById('install-banner');
+  // Already installed (standalone) or previously dismissed — stay quiet.
+  if (window.matchMedia('(display-mode: standalone)').matches || localStorage.getItem('tax-install-dismissed')) return;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    banner.hidden = false;
+  });
+  document.getElementById('install-btn').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    banner.hidden = true;
+  });
+  document.getElementById('install-dismiss').addEventListener('click', () => {
+    banner.hidden = true;
+    localStorage.setItem('tax-install-dismissed', '1');
+  });
+})();
+</script>
 </body>
 </html>

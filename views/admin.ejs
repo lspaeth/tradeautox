@@ -7,7 +7,7 @@
   <% if (!pending.length) { %>
     <p class="muted">No pending applications.</p>
   <% } else { %>
-    <table class="table">
+    <div class="table-scroll"><table class="table">
       <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Applied</th><th></th></tr>
       <% pending.forEach(d => { %>
         <tr>
@@ -26,13 +26,13 @@
           </td>
         </tr>
       <% }) %>
-    </table>
+    </table></div>
   <% } %>
 </section>
 
 <section class="panel">
   <h2>All dealers (<%= members.length %>)</h2>
-  <table class="table">
+  <div class="table-scroll"><table class="table">
     <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th></tr>
     <% members.forEach(d => { %>
       <tr>
@@ -42,7 +42,7 @@
         <td class="muted small"><%= d.stripe_customer_id || '—' %></td>
       </tr>
     <% }) %>
-  </table>
+  </table></div>
   <p class="muted small">Refunds: issue them in the <a href="https://dashboard.stripe.com/payments" target="_blank" rel="noopener">Stripe Dashboard → Payments</a>. Find the payment, click Refund. No code needed — this is handled natively by Stripe.</p>
 </section>
 
