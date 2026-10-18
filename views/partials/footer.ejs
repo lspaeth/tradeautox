@@ -29,6 +29,13 @@
     deferredPrompt = null;
     banner.hidden = true;
   });
+  // iOS: no beforeinstallprompt — show a one-time "Add to Home Screen" hint.
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS && !localStorage.getItem('tax-install-dismissed') && !navigator.standalone) {
+    banner.querySelector('span').textContent = 'Install the TradeAutoX app: tap Share, then "Add to Home Screen".';
+    document.getElementById('install-btn').style.display = 'none';
+    banner.hidden = false;
+  }
   document.getElementById('install-dismiss').addEventListener('click', () => {
     banner.hidden = true;
     localStorage.setItem('tax-install-dismissed', '1');
