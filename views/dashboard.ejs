@@ -3,6 +3,12 @@
 <h1>Dashboard</h1>
 <p class="muted"><%= dealer.dealership_name %> — <%= dealer.contact_name %> (<%= dealer.email %>)</p>
 
+<% if (typeof notice !== 'undefined' && notice) { %><p class="alert ok"><%= notice %></p><% } %>
+<% if (dealer.must_change_password) { %>
+  <p class="alert warn"><strong>You're using a temporary password.</strong> <a href="/change-password">Set a new password</a> to secure your account.</p>
+<% } %>
+<p class="muted small"><a href="/change-password">Change password</a></p>
+
 <section class="panel">
   <h2>Membership</h2>
   <% if (dealer.status === 'pending') { %>

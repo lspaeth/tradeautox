@@ -31,6 +31,30 @@
 </section>
 
 <section class="panel">
+  <h2>Password reset requests (<%= resets.length %>)</h2>
+  <% if (!resets.length) { %>
+    <p class="muted">No open requests.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Dealership</th><th>Contact</th><th>Requested</th><th></th></tr>
+      <% resets.forEach(r => { %>
+        <tr>
+          <td><%= r.dealership_name %><br><span class="muted small"><%= r.email %></span></td>
+          <td><%= r.contact_name %></td>
+          <td class="small"><%= r.created_at %></td>
+          <td>
+            <form method="post" action="/admin/resets/<%= r.id %>/issue" style="display:inline">
+              <button class="btn btn-xs" type="submit">Issue temp password</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table></div>
+    <p class="muted small">The temporary password shows once on the next screen — pass it to the dealer yourself (call or text). They'll be asked to set a new one on login.</p>
+  <% } %>
+</section>
+
+<section class="panel">
   <h2>All dealers (<%= members.length %>)</h2>
   <div class="table-scroll"><table class="table">
     <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th></tr>

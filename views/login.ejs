@@ -10,10 +10,15 @@
     <input type="email" name="email" required>
   </label>
   <label>Password
-    <input type="password" name="password" required>
+    <span class="pw-wrap">
+      <input type="password" name="password" required>
+      <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
+    </span>
   </label>
   <button class="btn" type="submit">Log in</button>
 </form>
+<p class="muted"><a href="/forgot-password">Forgot password?</a></p>
 <p class="muted">No account yet? <a href="/signup">Apply for membership</a>.</p>
 
+<%- include('partials/password-toggle') %>
 <%- include('partials/footer') %>

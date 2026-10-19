@@ -60,6 +60,9 @@ router.post('/login', async (req, res) => {
     return res.status(403).render('login', { error: 'This account was not approved. Contact support.', notice: null });
   }
   req.session.dealerId = dealer.id;
+  if (dealer.must_change_password) {
+    return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
+  }
   res.redirect('/dashboard');
 });
 
@@ -68,6 +71,44 @@ router.get('/logout', (req, res) => {
 });
 router.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
+});
+
+// ---- forgot password (admin-assisted: no email service needed) ----
+router.get('/forgot-password', (req, res) => {
+  if (req.session.dealerId) return res.redirect('/dashboard');
+  res.render('forgot-password', { error: null, notice: null });
+});
+
+router.post('/forgot-password', (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const dealer = email ? db.getDealerByEmail(email) : null;
+  // Only approved dealers can request a reset; never reveal whether the email exists.
+  if (dealer && dealer.status === 'approved' && !db.hasOpenPasswordReset(dealer.id)) {
+    db.createPasswordReset(dealer.id);
+  }
+  res.render('forgot-password', {
+    error: null,
+    notice: 'If an account exists for that email, the administrator has been notified. You will receive a temporary password shortly.',
+  });
+});
+
+// ---- change password ----
+router.get('/change-password', requireLogin, (req, res) => {
+  res.render('change-password', { error: null, notice: req.query.notice || null });
+});
+
+router.post('/change-password', requireLogin, async (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  const { current_password, new_password } = req.body;
+  if (!dealer || !(await bcrypt.compare(current_password || '', dealer.password_hash))) {
+    return res.status(401).render('change-password', { error: 'Current password is incorrect.', notice: null });
+  }
+  if (!new_password || new_password.length < 8) {
+    return res.status(400).render('change-password', { error: 'New password must be at least 8 characters.', notice: null });
+  }
+  db.setDealerPassword(dealer.id, await bcrypt.hash(new_password, 12));
+  db.setMustChangePassword(dealer.id, 0);
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Password updated.'));
 });
 
 module.exports = router;

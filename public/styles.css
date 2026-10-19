@@ -124,3 +124,18 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
   .price-lg { font-size: 1.6rem; }
   .specs { grid-template-columns: 110px 1fr; }
 }
+
+/* Show/hide password toggle */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input[type="password"], .pw-wrap input[type="text"] { padding-right: 44px; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: 0; font-size: 1.15rem; line-height: 1;
+  padding: 8px; cursor: pointer; opacity: 0.75;
+}
+.pw-toggle:hover { opacity: 1; }
+.temp-password {
+  font-size: 1.6rem; font-weight: 700; letter-spacing: 0.08em;
+  background: #141619; border: 1px dashed var(--line); border-radius: 8px;
+  padding: 14px 18px; display: inline-block; margin: 12px 0; user-select: all;
+}

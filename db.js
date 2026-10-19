@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS listing_photos (
   listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
   path TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  used_at TEXT
+);
 `);
 
 // Best-effort migration for databases created before terms_accepted_at existed.
@@ -55,6 +62,13 @@ try {
 // Best-effort migration for databases created before verification_report existed.
 try {
   db.exec(`ALTER TABLE listings ADD COLUMN verification_report TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
+// Best-effort migration for databases created before must_change_password existed.
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`);
 } catch (e) {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
@@ -121,10 +135,40 @@ const getDealerListings = (dealerId) =>
 const setListingStatus = (id, dealerId, status) =>
   db.prepare(`UPDATE listings SET status = ? WHERE id = ? AND dealer_id = ?`).run(status, id, dealerId);
 
+// ---- password resets (admin-assisted: dealer requests, admin issues temp password) ----
+const createPasswordReset = (dealerId) =>
+  db.prepare(`INSERT INTO password_resets (dealer_id) VALUES (?)`).run(dealerId);
+
+const hasOpenPasswordReset = (dealerId) =>
+  !!db.prepare(`SELECT 1 FROM password_resets WHERE dealer_id = ? AND used_at IS NULL`).get(dealerId);
+
+const listOpenPasswordResets = () =>
+  db.prepare(`
+    SELECT r.id, r.created_at, d.dealership_name, d.contact_name, d.email
+    FROM password_resets r JOIN dealers d ON d.id = r.dealer_id
+    WHERE r.used_at IS NULL ORDER BY r.created_at`).all();
+
+const getPasswordReset = (id) =>
+  db.prepare(`
+    SELECT r.*, d.dealership_name, d.contact_name, d.email
+    FROM password_resets r JOIN dealers d ON d.id = r.dealer_id
+    WHERE r.id = ?`).get(id);
+
+const markPasswordResetUsed = (id) =>
+  db.prepare(`UPDATE password_resets SET used_at = datetime('now') WHERE id = ?`).run(id);
+
+const setDealerPassword = (id, passwordHash) =>
+  db.prepare(`UPDATE dealers SET password_hash = ? WHERE id = ?`).run(passwordHash, id);
+
+const setMustChangePassword = (id, val) =>
+  db.prepare(`UPDATE dealers SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
+
 module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
-  setDealerStatus, setStripeCustomer, setMembership,
+  setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   listDealersByStatus, listAllDealers,
   createListing, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, setListingStatus,
+  createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
+  getPasswordReset, markPasswordResetUsed,
 };

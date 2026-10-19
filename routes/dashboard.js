@@ -12,6 +12,7 @@ router.get('/', requireLogin, (req, res) => {
   res.render('dashboard', {
     dealer,
     listings,
+    notice: req.query.notice || null,
     stripeConfigured: stripeConfigured() && !!process.env.STRIPE_PRICE_ID,
   });
 });

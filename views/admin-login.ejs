@@ -4,8 +4,14 @@
 <% if (error) { %><p class="alert error"><%= error %></p><% } %>
 <form class="form" method="post" action="/admin/login">
   <label>Email<input type="email" name="email" required></label>
-  <label>Password<input type="password" name="password" required></label>
+  <label>Password
+    <span class="pw-wrap">
+      <input type="password" name="password" required>
+      <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
+    </span>
+  </label>
   <button class="btn" type="submit">Log in</button>
 </form>
 
+<%- include('partials/password-toggle') %>
 <%- include('partials/footer') %>

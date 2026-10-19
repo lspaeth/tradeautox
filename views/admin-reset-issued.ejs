@@ -1,0 +1,13 @@
+<%- include('partials/header') %>
+
+<h1>Temporary password issued</h1>
+
+<p>For <strong><%= reset.dealership_name %></strong> (<%= reset.contact_name %>, <%= reset.email %>):</p>
+
+<p class="temp-password"><%= tempPassword %></p>
+
+<p class="alert warn"><strong>This is the only time it will be shown.</strong> Send it to the dealer now — call or text. They'll be prompted to choose a new password when they log in.</p>
+
+<p><a class="btn" href="/admin">Back to admin panel</a></p>
+
+<%- include('partials/footer') %>

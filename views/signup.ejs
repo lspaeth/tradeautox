@@ -16,7 +16,10 @@
     <input type="email" name="email" required>
   </label>
   <label>Password * <span class="muted small">(min 8 characters)</span>
-    <input type="password" name="password" minlength="8" required>
+    <span class="pw-wrap">
+      <input type="password" name="password" minlength="8" required>
+      <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
+    </span>
   </label>
   <label>Phone
     <input name="phone" type="tel">
@@ -34,4 +37,5 @@
   <button class="btn" type="submit">Submit application</button>
 </form>
 
+<%- include('partials/password-toggle') %>
 <%- include('partials/footer') %>
