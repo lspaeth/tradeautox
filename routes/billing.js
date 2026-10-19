@@ -38,7 +38,10 @@ router.post('/checkout', requireLogin, async (req, res) => {
       customer: customerId,
       line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
       metadata: { dealer_id: String(dealer.id) },
-      subscription_data: { metadata: { dealer_id: String(dealer.id) } },
+      subscription_data: {
+        trial_period_days: 30, // first 30 days free — card is collected but not charged until the trial ends
+        metadata: { dealer_id: String(dealer.id) },
+      },
       success_url: `${baseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl()}/billing/cancel`,
     });
@@ -55,7 +58,9 @@ router.get('/success', requireLogin, async (req, res) => {
   if (req.query.session_id && stripeConfigured()) {
     try {
       const s = await getStripe().checkout.sessions.retrieve(req.query.session_id);
-      if (s.payment_status === 'paid' && String(s.metadata.dealer_id) === String(dealer.id)) {
+      // Trials collect a card but take no payment, so payment_status is 'no_payment_required'.
+      const paidLike = s.payment_status === 'paid' || s.payment_status === 'no_payment_required';
+      if (paidLike && String(s.metadata.dealer_id) === String(dealer.id)) {
         db.setMembership(dealer.id, 'active', s.subscription);
       }
     } catch (err) {

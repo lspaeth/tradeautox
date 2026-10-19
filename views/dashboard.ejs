@@ -27,10 +27,10 @@
       <button class="btn btn-sm" type="submit">Update payment method</button>
     </form>
   <% } else { %>
-    <p><strong>You're approved!</strong> Activate your $599/month membership to start buying and selling.</p>
+    <p><strong>You're approved!</strong> Activate your membership to start buying and selling — first 30 days free, then $599/month.</p>
     <% if (stripeConfigured) { %>
       <form method="post" action="/billing/checkout">
-        <button class="btn" type="submit">Activate membership — $599/mo</button>
+        <button class="btn" type="submit">Start free 30-day trial</button>
       </form>
     <% } else { %>
       <p class="alert warn">Online billing isn't configured on this server yet. Contact the site administrator to activate.</p>
