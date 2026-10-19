@@ -2,7 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const db = require('../db');
+const upload = require('../lib/upload');
 const { requireAdmin } = require('../lib/auth');
+const { createListingFromRequest } = require('../lib/listings');
 
 const router = express.Router();
 
@@ -90,6 +92,27 @@ Log in at ${(process.env.BASE_URL || 'https://tradeautox-production.up.railway.a
     console.error('[mail] temp password email failed:', err.message);
   }
   res.render('admin-reset-issued', { reset, tempPassword, emailed });
+});
+
+// Post a demo vehicle (listed under the TradeAutoX demo seller, for showing how it works)
+router.get('/listings/new', requireAdmin, (req, res) => {
+  res.render('listing-new', {
+    error: null, formAction: '/admin/listings', heading: 'Post a demo vehicle', isAdmin: true,
+  });
+});
+
+router.post('/listings', requireAdmin, upload.listingUpload, async (req, res) => {
+  try {
+    const demo = await db.ensureDemoDealer();
+    const listingId = createListingFromRequest(demo.id, req.body, req.files);
+    res.redirect(`/listings/${listingId}`);
+  } catch (err) {
+    console.error(err);
+    res.status(400).render('listing-new', {
+      error: err.message || 'Something went wrong saving the listing.',
+      formAction: '/admin/listings', heading: 'Post a demo vehicle', isAdmin: true,
+    });
+  }
 });
 
 module.exports = router;

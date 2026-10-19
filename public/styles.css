@@ -139,3 +139,8 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
   background: #141619; border: 1px dashed var(--line); border-radius: 8px;
   padding: 14px 18px; display: inline-block; margin: 12px 0; user-select: all;
 }
+
+/* VIN decode */
+.vin-wrap { display: flex; gap: 8px; align-items: center; }
+.vin-wrap input { flex: 1; }
+.vin-wrap .btn { flex-shrink: 0; }

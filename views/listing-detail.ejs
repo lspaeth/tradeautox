@@ -20,6 +20,13 @@
 
 <dl class="specs">
   <% if (listing.vin) { %><dt>VIN</dt><dd><%= listing.vin %></dd><% } %>
+  <% if (listing.trim) { %><dt>Trim</dt><dd><%= listing.trim %></dd><% } %>
+  <% if (listing.body_style) { %><dt>Body</dt><dd><%= listing.body_style %></dd><% } %>
+  <% if (listing.drivetrain) { %><dt>Drivetrain</dt><dd><%= listing.drivetrain %></dd><% } %>
+  <% if (listing.engine) { %><dt>Engine</dt><dd><%= listing.engine %></dd><% } %>
+  <% if (listing.transmission) { %><dt>Transmission</dt><dd><%= listing.transmission %></dd><% } %>
+  <% if (listing.fuel) { %><dt>Fuel</dt><dd><%= listing.fuel %></dd><% } %>
+  <% if (listing.doors) { %><dt>Doors</dt><dd><%= listing.doors %></dd><% } %>
   <% if (listing.mileage) { %><dt>Mileage</dt><dd><%= Number(listing.mileage).toLocaleString() %> mi</dd><% } %>
   <dt>Seller</dt><dd><%= listing.dealership_name %></dd>
   <dt>Contact</dt><dd><%= listing.contact_name %><% if (listing.phone) { %> — <%= listing.phone %><% } %></dd>

@@ -1,21 +1,41 @@
 <%- include('partials/header') %>
 
-<h1>Sell a vehicle</h1>
-<p class="muted">Unlimited listings included with your membership. Up to 8 photos.</p>
+<h1><%= heading %></h1>
+<% if (isAdmin) { %>
+  <p class="muted">Demo listing — it will appear on the board under the seller <strong>TradeAutoX (demo)</strong>.</p>
+<% } else { %>
+  <p class="muted">Unlimited listings included with your membership. Up to 8 photos.</p>
+<% } %>
 
 <% if (error) { %><p class="alert error"><%= error %></p><% } %>
 
-<form class="form" method="post" action="/listings" enctype="multipart/form-data">
+<form class="form" method="post" action="<%= formAction %>" enctype="multipart/form-data">
   <div class="row">
-    <label>Make *<input name="make" required></label>
-    <label>Model *<input name="model" required></label>
-    <label>Year *<input name="year" inputmode="numeric" required></label>
+    <label>VIN <span class="muted small">(type it in — we'll fill in the rest)</span>
+      <span class="vin-wrap">
+        <input name="vin" id="vin-input" maxlength="17" autocapitalize="characters" spellcheck="false"
+               placeholder="17-character VIN" style="text-transform:uppercase">
+        <button type="button" class="btn btn-sm" id="vin-decode-btn">Decode</button>
+      </span>
+    </label>
+  </div>
+  <p id="vin-status" class="muted small" aria-live="polite"></p>
+  <div class="row">
+    <label>Make *<input name="make" id="f-make" required></label>
+    <label>Model *<input name="model" id="f-model" required></label>
+    <label>Year *<input name="year" id="f-year" inputmode="numeric" required></label>
   </div>
   <div class="row">
-    <label>VIN<input name="vin" maxlength="17"></label>
+    <label>Trim<input name="trim" id="f-trim"></label>
     <label>Mileage<input name="mileage" inputmode="numeric"></label>
     <label>Asking price (USD) *<input name="price" inputmode="numeric" required></label>
   </div>
+  <input type="hidden" name="body_style" id="f-body_style">
+  <input type="hidden" name="drivetrain" id="f-drivetrain">
+  <input type="hidden" name="engine" id="f-engine">
+  <input type="hidden" name="transmission" id="f-transmission">
+  <input type="hidden" name="fuel" id="f-fuel">
+  <input type="hidden" name="doors" id="f-doors">
   <label>Description
     <textarea name="description" rows="5" placeholder="Condition, options, history, title status…"></textarea>
   </label>
@@ -28,5 +48,66 @@
   <p class="muted small">Listings with a verification report get a <strong>Verified</strong> badge and sell with more confidence.</p>
   <button class="btn" type="submit">Post listing</button>
 </form>
+
+<script>
+(function () {
+  var vinInput = document.getElementById('vin-input');
+  var btn = document.getElementById('vin-decode-btn');
+  var status = document.getElementById('vin-status');
+  var fields = {
+    year: 'f-year', make: 'f-make', model: 'f-model', trim: 'f-trim',
+    body_style: 'f-body_style', drivetrain: 'f-drivetrain', engine: 'f-engine',
+    transmission: 'f-transmission', fuel: 'f-fuel', doors: 'f-doors'
+  };
+  var busy = false;
+
+  function setStatus(msg, isError) {
+    status.textContent = msg;
+    status.className = isError ? 'alert error small' : 'muted small';
+  }
+
+  async function decode() {
+    var vin = vinInput.value.trim().toUpperCase();
+    vinInput.value = vin;
+    if (vin.length !== 17) { setStatus('Enter the full 17-character VIN to decode it.', true); return; }
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    setStatus('Decoding VIN…');
+    try {
+      var res = await fetch('/listings/api/decode-vin?vin=' + encodeURIComponent(vin));
+      var data = await res.json();
+      if (data.error) { setStatus(data.error, true); return; }
+      var spec = data.spec, filled = [];
+      Object.keys(fields).forEach(function (k) {
+        if (spec[k] != null && spec[k] !== '') {
+          document.getElementById(fields[k]).value = spec[k];
+          filled.push(k);
+        }
+      });
+      var extras = ['body_style', 'drivetrain', 'engine', 'transmission', 'fuel']
+        .filter(function (k) { return spec[k]; })
+        .map(function (k) { return spec[k]; }).join(' · ');
+      setStatus('Decoded: ' + [spec.year, spec.make, spec.model, spec.trim].filter(Boolean).join(' ') +
+        (extras ? ' — ' + extras : ''));
+    } catch (e) {
+      setStatus('VIN lookup failed — fill in the details manually.', true);
+    } finally {
+      busy = false;
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', decode);
+  // Auto-decode once a full VIN is typed/pasted
+  var t;
+  vinInput.addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      if (vinInput.value.trim().length === 17) decode();
+    }, 600);
+  });
+})();
+</script>
 
 <%- include('partials/footer') %>

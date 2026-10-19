@@ -73,6 +73,15 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migrations for VIN-decoded spec columns on listings.
+for (const col of ['trim', 'body_style', 'drivetrain', 'engine', 'transmission', 'fuel', 'doors']) {
+  try {
+    db.exec(`ALTER TABLE listings ADD COLUMN ${col} TEXT`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at)
@@ -100,8 +109,10 @@ const listAllDealers = () =>
 
 // ---- listings ----
 const createListing = (l) => db.prepare(`
-  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report)
-  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report)
+  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report,
+    trim, body_style, drivetrain, engine, transmission, fuel, doors)
+  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report,
+    @trim, @body_style, @drivetrain, @engine, @transmission, @fuel, @doors)
 `).run(l);
 
 const addListingPhoto = (listingId, p) =>
@@ -163,6 +174,30 @@ const setDealerPassword = (id, passwordHash) =>
 const setMustChangePassword = (id, val) =>
   db.prepare(`UPDATE dealers SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
 
+// ---- demo dealer (used for admin-posted demo listings) ----
+const DEMO_DEALER_EMAIL = 'demo@tradeautox.com';
+async function ensureDemoDealer() {
+  let d = getDealerByEmail(DEMO_DEALER_EMAIL);
+  if (!d) {
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+    const info = createDealer({
+      dealership_name: 'TradeAutoX (demo)',
+      contact_name: 'TradeAutoX',
+      email: DEMO_DEALER_EMAIL,
+      password_hash: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 12),
+      phone: '',
+      license_number: 'DEMO',
+      license_photo_path: null,
+      terms_accepted_at: new Date().toISOString(),
+    });
+    d = getDealerById(info.lastInsertRowid);
+  }
+  if (d.status !== 'approved') setDealerStatus(d.id, 'approved');
+  if (d.membership_status !== 'active') setMembership(d.id, 'active');
+  return getDealerById(d.id);
+}
+
 module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
@@ -171,4 +206,5 @@ module.exports = {
   searchListings, getDealerListings, setListingStatus,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
+  ensureDemoDealer, DEMO_DEALER_EMAIL,
 };
