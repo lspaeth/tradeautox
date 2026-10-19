@@ -68,7 +68,28 @@ router.post('/resets/:id/issue', requireAdmin, async (req, res) => {
   db.setDealerPassword(reset.dealer_id, await bcrypt.hash(tempPassword, 12));
   db.setMustChangePassword(reset.dealer_id, 1);
   db.markPasswordResetUsed(reset.id);
-  res.render('admin-reset-issued', { reset, tempPassword });
+  // Email the temp password too (skipped gracefully if SMTP isn't configured).
+  const { sendMail } = require('../lib/mail');
+  let emailed = false;
+  try {
+    emailed = await sendMail({
+      to: reset.email,
+      subject: 'Your TradeAutoX temporary password',
+      text:
+`Hi ${reset.contact_name},
+
+Your temporary TradeAutoX password is:
+
+${tempPassword}
+
+Log in at ${(process.env.BASE_URL || 'https://tradeautox-production.up.railway.app').replace(/\/$/, '')}/login and you'll be asked to choose a new password.
+
+— TradeAutoX`,
+    });
+  } catch (err) {
+    console.error('[mail] temp password email failed:', err.message);
+  }
+  res.render('admin-reset-issued', { reset, tempPassword, emailed });
 });
 
 module.exports = router;
