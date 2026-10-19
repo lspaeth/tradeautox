@@ -115,4 +115,12 @@ router.post('/listings', requireAdmin, upload.listingUpload, async (req, res) =>
   }
 });
 
+// Mark sold / remove any listing (admin)
+router.post('/listings/:id/status', requireAdmin, (req, res) => {
+  const { status } = req.body;
+  if (!['sold', 'removed'].includes(status)) return res.redirect('/admin');
+  db.setListingStatusById(req.params.id, status);
+  res.redirect('/admin');
+});
+
 module.exports = router;

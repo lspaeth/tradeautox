@@ -146,6 +146,10 @@ const getDealerListings = (dealerId) =>
 const setListingStatus = (id, dealerId, status) =>
   db.prepare(`UPDATE listings SET status = ? WHERE id = ? AND dealer_id = ?`).run(status, id, dealerId);
 
+// Admin use: no dealer constraint.
+const setListingStatusById = (id, status) =>
+  db.prepare(`UPDATE listings SET status = ? WHERE id = ?`).run(status, id);
+
 // ---- password resets (admin-assisted: dealer requests, admin issues temp password) ----
 const createPasswordReset = (dealerId) =>
   db.prepare(`INSERT INTO password_resets (dealer_id) VALUES (?)`).run(dealerId);
@@ -203,7 +207,7 @@ module.exports = {
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   listDealersByStatus, listAllDealers,
   createListing, addListingPhoto, getListing, getListingPhotos,
-  searchListings, getDealerListings, setListingStatus,
+  searchListings, getDealerListings, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
   ensureDemoDealer, DEMO_DEALER_EMAIL,

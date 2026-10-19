@@ -37,6 +37,22 @@
   <p class="pre"><%= listing.description %></p>
 <% } %>
 
+<% if (canManage) { %>
+  <section class="panel">
+    <h2>Manage this listing</h2>
+    <div class="cta-row">
+      <form method="post" action="<%= isAdmin ? '/admin/listings/' + listing.id + '/status' : '/listings/' + listing.id + '/status' %>" style="display:inline">
+        <input type="hidden" name="status" value="sold">
+        <button class="btn btn-sm" type="submit">Mark sold</button>
+      </form>
+      <form method="post" action="<%= isAdmin ? '/admin/listings/' + listing.id + '/status' : '/listings/' + listing.id + '/status' %>" style="display:inline">
+        <input type="hidden" name="status" value="removed">
+        <button class="btn btn-sm btn-ghost" type="submit" onclick="return confirm('Remove this listing from the board?')">Delete listing</button>
+      </form>
+    </div>
+  </section>
+<% } %>
+
 <p class="muted small">Listed <%= listing.created_at %>. Dealers transact directly — TradeAutoX charges no per-vehicle fees.</p>
 
 <%- include('partials/footer') %>

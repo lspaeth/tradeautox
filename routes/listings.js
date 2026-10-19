@@ -48,7 +48,8 @@ router.get('/:id', requireMemberOrAdmin, (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.status !== 'active') return res.status(404).render('404');
   const photos = db.getListingPhotos(listing.id);
-  res.render('listing-detail', { listing, photos });
+  const canManage = !!req.session.admin || req.session.dealerId === listing.dealer_id;
+  res.render('listing-detail', { listing, photos, canManage });
 });
 
 // Mark sold / remove (owner only)
