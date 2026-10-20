@@ -1,0 +1,115 @@
+<%- include('partials/header') %>
+
+<h1>Start a live auction</h1>
+<p class="muted">Got a trade-in on the lot and need a real wholesale number <em>now</em>? Fire it live — every approved dealer inside your radius gets alerted instantly and bidding runs in real time.</p>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<% if (!dealerZip) { %>
+  <p class="alert warn"><strong>ZIP needed:</strong> set your dealership ZIP code on your <a href="/dashboard">dashboard</a> first — alerts go out by distance from your ZIP.</p>
+<% } %>
+
+<form class="form" method="post" action="/auctions" enctype="multipart/form-data">
+  <div class="row">
+    <label>VIN <span class="muted small">(type it in — we'll fill in the rest)</span>
+      <span class="vin-wrap">
+        <input name="vin" id="vin-input" maxlength="17" autocapitalize="characters" spellcheck="false"
+               placeholder="17-character VIN" style="text-transform:uppercase">
+        <button type="button" class="btn btn-sm" id="vin-decode-btn">Decode</button>
+      </span>
+    </label>
+  </div>
+  <p id="vin-status" class="muted small" aria-live="polite"></p>
+  <div class="row">
+    <label>Make *<input name="make" id="f-make" required></label>
+    <label>Model *<input name="model" id="f-model" required></label>
+    <label>Year *<input name="year" id="f-year" inputmode="numeric" required></label>
+  </div>
+  <div class="row">
+    <label>Trim<input name="trim" id="f-trim"></label>
+    <label>Mileage<input name="mileage" inputmode="numeric"></label>
+    <label>The number you need <span class="muted small">(optional — only you see this)</span><input name="target_price" inputmode="numeric" placeholder="e.g. 12500"></label>
+  </div>
+  <input type="hidden" name="body_style" id="f-body_style">
+  <input type="hidden" name="drivetrain" id="f-drivetrain">
+  <input type="hidden" name="engine" id="f-engine">
+  <input type="hidden" name="transmission" id="f-transmission">
+  <input type="hidden" name="fuel" id="f-fuel">
+  <input type="hidden" name="doors" id="f-doors">
+  <div class="row">
+    <label>Alert radius
+      <select name="radius">
+        <% radiusOptions.forEach(r => { %><option value="<%= r %>"<%= r === 50 ? ' selected' : '' %>><%= r %> miles</option><% }) %>
+      </select>
+    </label>
+    <label>Auction length
+      <select name="duration">
+        <% durationOptions.forEach(d => { %><option value="<%= d %>"<%= d === 30 ? ' selected' : '' %>><%= d %> minutes</option><% }) %>
+      </select>
+    </label>
+  </div>
+  <label>Condition notes
+    <textarea name="description" rows="4" placeholder="Condition, options, history, title status — what bidders need to know…"></textarea>
+  </label>
+  <label>Photos <span class="muted small">(up to 8 images — on your phone, tap to use the camera)</span>
+    <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+  </label>
+  <p class="muted small">A bid in the final 2 minutes extends the clock by 2 minutes. You can accept the high bid at any time — the sale then happens directly between you and the winning dealer, as-is.</p>
+  <button class="btn" type="submit">Go live</button>
+</form>
+
+<script>
+(function () {
+  var vinInput = document.getElementById('vin-input');
+  var btn = document.getElementById('vin-decode-btn');
+  var status = document.getElementById('vin-status');
+  var fields = {
+    year: 'f-year', make: 'f-make', model: 'f-model', trim: 'f-trim',
+    body_style: 'f-body_style', drivetrain: 'f-drivetrain', engine: 'f-engine',
+    transmission: 'f-transmission', fuel: 'f-fuel', doors: 'f-doors'
+  };
+  var busy = false;
+
+  function setStatus(msg, isError) {
+    status.textContent = msg;
+    status.className = isError ? 'alert error small' : 'muted small';
+  }
+
+  async function decode() {
+    var vin = vinInput.value.trim().toUpperCase();
+    vinInput.value = vin;
+    if (vin.length !== 17) { setStatus('Enter the full 17-character VIN to decode it.', true); return; }
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    setStatus('Decoding VIN…');
+    try {
+      var res = await fetch('/listings/api/decode-vin?vin=' + encodeURIComponent(vin));
+      var data = await res.json();
+      if (data.error) { setStatus(data.error, true); return; }
+      var spec = data.spec;
+      Object.keys(fields).forEach(function (k) {
+        if (spec[k] != null && spec[k] !== '') {
+          document.getElementById(fields[k]).value = spec[k];
+        }
+      });
+      setStatus('Decoded: ' + [spec.year, spec.make, spec.model, spec.trim].filter(Boolean).join(' '));
+    } catch (e) {
+      setStatus('VIN lookup failed — fill in the details manually.', true);
+    } finally {
+      busy = false;
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', decode);
+  var t;
+  vinInput.addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      if (vinInput.value.trim().length === 17) decode();
+    }, 600);
+  });
+})();
+</script>
+
+<%- include('partials/footer') %>

@@ -19,9 +19,34 @@ router.get('/api/decode-vin', (req, res) => {
 
 // Browse / search — members and admin
 router.get('/', requireMemberOrAdmin, (req, res) => {
-  const { make, max_price } = req.query;
-  const listings = db.searchListings({ make: (make || '').trim(), maxPrice: max_price || null });
-  res.render('listings', { listings, filters: { make: make || '', max_price: max_price || '' } });
+  const { make, max_price, radius, zip } = req.query;
+  const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
+  const { currentDealer } = require('../lib/auth');
+  let listings = db.searchListings({ make: (make || '').trim(), maxPrice: max_price || null });
+
+  // Radius filter: distance from the viewer's ZIP (or a typed ZIP) to each seller's ZIP.
+  const viewer = currentDealer(req);
+  const centerZip = isValidZip(zip) ? cleanZip(zip) : (viewer && isValidZip(viewer.zip) ? viewer.zip : null);
+  const radiusNum = [25, 50, 100, 250].includes(Number(radius)) ? Number(radius) : null;
+  listings = listings.map((l) => ({
+    ...l,
+    distance: centerZip ? distanceMiles(centerZip, l.seller_zip) : null,
+  }));
+  let radiusNoZip = false;
+  if (radiusNum) {
+    if (!centerZip) {
+      radiusNoZip = true;
+    } else {
+      listings = listings.filter((l) => l.distance != null && l.distance <= radiusNum)
+        .sort((a, b) => a.distance - b.distance);
+    }
+  }
+  res.render('listings', {
+    listings,
+    radiusNoZip,
+    centerZip,
+    filters: { make: make || '', max_price: max_price || '', radius: radius || '', zip: zip || '' },
+  });
 });
 
 // New listing form

@@ -5,9 +5,19 @@
 <form class="filters" method="get" action="/listings">
   <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
   <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
+  <select name="radius">
+    <option value=""<%= !filters.radius ? ' selected' : '' %>>Any distance</option>
+    <% [25, 50, 100, 250].forEach(r => { %><option value="<%= r %>"<%= String(filters.radius) === String(r) ? ' selected' : '' %>>Within <%= r %> mi</option><% }) %>
+  </select>
+  <input name="zip" placeholder="From ZIP" inputmode="numeric" maxlength="5" value="<%= filters.zip %>" style="max-width:110px">
   <button class="btn btn-sm" type="submit">Filter</button>
-  <% if (filters.make || filters.max_price) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
+  <% if (filters.make || filters.max_price || filters.radius || filters.zip) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
 </form>
+<% if (radiusNoZip) { %>
+  <p class="alert warn">To search by radius, enter a ZIP above or set your dealership ZIP on your <a href="/dashboard">dashboard</a>.</p>
+<% } else if (filters.radius && centerZip) { %>
+  <p class="muted small">Showing cars within <%= filters.radius %> miles of <%= centerZip %>, nearest first.</p>
+<% } %>
 
 <% if (!listings.length) { %>
   <p class="muted">No listings match.</p>
@@ -18,7 +28,7 @@
         <div class="listing-card-body">
           <h3><%= l.year %> <%= l.make %> <%= l.model %><% if (l.verification_report) { %> <span class="verified-badge sm">✓</span><% } %></h3>
           <p class="price"><%= fmtMoney(l.price) %></p>
-          <p class="muted small"><%= l.dealership_name %></p>
+          <p class="muted small"><%= l.dealership_name %><% if (l.distance != null) { %> · <%= l.distance %> mi away<% } %></p>
         </div>
       </a>
     <% }) %>

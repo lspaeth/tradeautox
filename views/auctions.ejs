@@ -1,0 +1,49 @@
+<%- include('partials/header') %>
+
+<h1>Live auctions <span class="live-dot" title="Live"></span></h1>
+<p class="muted">Real-time wholesale bidding on trade-ins. When a dealer needs a number <em>now</em>, the car goes live and dealers nearby bid.</p>
+
+<p><a class="btn" href="/auctions/new">Start a live auction</a></p>
+
+<% if (!viewerZip) { %>
+  <p class="alert warn">Set your dealership ZIP on your <a href="/dashboard">dashboard</a> to see distances and get auction alerts near you.</p>
+<% } %>
+
+<h2>Live now</h2>
+<% if (!live.length) { %>
+  <p class="muted">No live auctions right now. When a dealer starts one inside your radius, you'll get an alert here and by email.</p>
+<% } else { %>
+  <div class="grid">
+    <% live.forEach(a => { %>
+      <a class="listing-card" href="/auctions/<%= a.id %>">
+        <div class="listing-card-body">
+          <h3><span class="live-badge">LIVE</span> <%= a.year %> <%= a.make %> <%= a.model %><% if (a.trim) { %> <%= a.trim %><% } %></h3>
+          <p class="price"><%= a.high_bid ? fmtMoney(a.high_bid) + ' high bid' : 'No bids yet' %></p>
+          <p class="muted small">
+            <%= a.dealership_name %><% if (a.distance != null) { %> · <%= a.distance %> mi away<% } %>
+            · ends <%= new Date(a.ends_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) %> ET
+            · <%= a.bid_count %> bid<%= a.bid_count === 1 ? '' : 's' %>
+          </p>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+
+<% if (recent.length) { %>
+  <h2>Recently ended</h2>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Vehicle</th><th>Seller</th><th>Result</th><th>High bid</th><th></th></tr>
+    <% recent.forEach(a => { %>
+      <tr>
+        <td><%= a.year %> <%= a.make %> <%= a.model %><% if (a.trim) { %> <%= a.trim %><% } %></td>
+        <td><%= a.dealership_name %></td>
+        <td><%= a.status %></td>
+        <td><%= a.high_bid ? fmtMoney(a.high_bid) : '—' %></td>
+        <td><a href="/auctions/<%= a.id %>">View</a></td>
+      </tr>
+    <% }) %>
+  </table></div>
+<% } %>
+
+<%- include('partials/footer') %>

@@ -45,6 +45,7 @@ app.use('/', require('./routes/site'));
 app.use('/', require('./routes/auth'));
 app.use('/dashboard', require('./routes/dashboard'));
 app.use('/listings', require('./routes/listings'));
+app.use('/auctions', require('./routes/auctions'));
 app.use('/admin', require('./routes/admin'));
 app.use('/billing', billing.billingRouter);
 

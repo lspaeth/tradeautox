@@ -16,7 +16,8 @@
     "express-session": "^1.18.1",
     "multer": "^2.0.2",
     "nodemailer": "^10.1.7",
-    "stripe": "^17.5.0"
+    "stripe": "^17.5.0",
+    "zipcodes": "^8.0.0"
   },
   "engines": {
     "node": ">=20"

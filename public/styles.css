@@ -144,3 +144,25 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
 .vin-wrap { display: flex; gap: 8px; align-items: center; }
 .vin-wrap input { flex: 1; }
 .vin-wrap .btn { flex-shrink: 0; }
+
+/* Live auctions */
+.live-badge {
+  display: inline-block; background: #e10600; color: #fff; font-size: 0.68rem;
+  font-weight: 700; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px;
+  vertical-align: middle; animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.live-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: #e10600; vertical-align: middle; animation: live-pulse 1.6s ease-in-out infinite;
+}
+.auction-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 720px) { .auction-grid { grid-template-columns: 1fr; } }
+.countdown { font-size: 1.05rem; font-weight: 700; }
+.high-bid { font-size: 2rem; font-weight: 800; margin: 6px 0 2px; }
+.bid-list { list-style: none; padding: 0; margin: 0; }
+.bid-list li { padding: 7px 0; border-bottom: 1px solid var(--line); }
+.bid-list li:last-child { border-bottom: 0; }
+.spec-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.ok-text { color: #2ecc71; }
+.filters select, .filters input { margin-right: 6px; }

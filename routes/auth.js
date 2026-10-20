@@ -13,9 +13,13 @@ router.get('/signup', (req, res) => {
 
 router.post('/signup', upload.single('license_photo'), async (req, res) => {
   try {
-    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms } = req.body;
+    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip } = req.body;
     if (!dealership_name || !contact_name || !email || !password || !license_number) {
       return res.status(400).render('signup', { error: 'Please fill in all required fields.' });
+    }
+    const { cleanZip, isValidZip } = require('../lib/geo');
+    if (!isValidZip(zip)) {
+      return res.status(400).render('signup', { error: 'Please enter a valid 5-digit dealership ZIP code.' });
     }
     if (!accept_terms) {
       return res.status(400).render('signup', { error: 'You must accept the Terms of Service to join.' });
@@ -36,6 +40,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       license_number: license_number.trim(),
       license_photo_path: req.file ? `/uploads/${req.file.filename}` : null,
       terms_accepted_at: new Date().toISOString(),
+      zip: cleanZip(zip),
     });
     req.session.dealerId = info.lastInsertRowid;
     res.redirect('/dashboard');

@@ -50,6 +50,54 @@ CREATE TABLE IF NOT EXISTS password_resets (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   used_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS auctions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,  -- seller
+  make TEXT NOT NULL,
+  model TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  vin TEXT,
+  mileage INTEGER,
+  trim TEXT,
+  body_style TEXT,
+  drivetrain TEXT,
+  engine TEXT,
+  transmission TEXT,
+  fuel TEXT,
+  doors TEXT,
+  description TEXT,
+  target_price INTEGER,                        -- the number the seller needs (seller-only)
+  radius INTEGER NOT NULL DEFAULT 50,          -- alert radius in miles
+  ends_at TEXT NOT NULL,                       -- ISO timestamp
+  status TEXT NOT NULL DEFAULT 'live',         -- live | accepted | ended | cancelled
+  winner_bid_id INTEGER,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auction_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+  path TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auction_bids (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,                     -- whole USD
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,                          -- auction_alert | auction_won | auction_sold | auction_outbid
+  ref_id INTEGER,                              -- auction id
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  read_at TEXT
+);
 `);
 
 // Best-effort migration for databases created before terms_accepted_at existed.
@@ -82,11 +130,21 @@ for (const col of ['trim', 'body_style', 'drivetrain', 'engine', 'transmission',
   }
 }
 
+// Best-effort migration: dealership ZIP (powers radius search + live auction alerts).
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN zip TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
-  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at)
-  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at)
-`).run(d);
+  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip)
+  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip)
+`).run({ zip: null, ...d });
+
+const setDealerZip = (id, zip) =>
+  db.prepare(`UPDATE dealers SET zip = ? WHERE id = ?`).run(zip || null, id);
 
 const getDealerByEmail = (email) => db.prepare(`SELECT * FROM dealers WHERE email = ?`).get(email);
 const getDealerById = (id) => db.prepare(`SELECT * FROM dealers WHERE id = ?`).get(id);
@@ -130,7 +188,7 @@ const getListingPhotos = (listingId) =>
 
 function searchListings({ make, maxPrice }) {
   let sql = `
-    SELECT l.*, d.dealership_name
+    SELECT l.*, d.dealership_name, d.zip AS seller_zip
     FROM listings l JOIN dealers d ON d.id = l.dealer_id
     WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status = 'active'`;
   const params = [];
@@ -178,6 +236,100 @@ const setDealerPassword = (id, passwordHash) =>
 const setMustChangePassword = (id, val) =>
   db.prepare(`UPDATE dealers SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
 
+// ---- live auctions ----
+const createAuction = (a) => db.prepare(`
+  INSERT INTO auctions (dealer_id, make, model, year, vin, mileage, trim, body_style, drivetrain,
+    engine, transmission, fuel, doors, description, target_price, radius, ends_at, status, created_at)
+  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @trim, @body_style, @drivetrain,
+    @engine, @transmission, @fuel, @doors, @description, @target_price, @radius, @ends_at, 'live', @created_at)
+`).run(a);
+
+const addAuctionPhoto = (auctionId, p) =>
+  db.prepare(`INSERT INTO auction_photos (auction_id, path) VALUES (?, ?)`).run(auctionId, p);
+
+const getAuctionPhotos = (auctionId) =>
+  db.prepare(`SELECT * FROM auction_photos WHERE auction_id = ? ORDER BY id`).all(auctionId);
+
+// Effective status: a 'live' auction past its end time reads as 'ended'.
+function withEffectiveStatus(a) {
+  if (a && a.status === 'live' && new Date(a.ends_at).getTime() <= Date.now()) {
+    return { ...a, status: 'ended' };
+  }
+  return a;
+}
+
+const getAuction = (id) => {
+  const a = db.prepare(`
+    SELECT a.*, d.dealership_name, d.contact_name, d.phone, d.email AS dealer_email, d.zip AS seller_zip
+    FROM auctions a JOIN dealers d ON d.id = a.dealer_id
+    WHERE a.id = ?
+  `).get(id);
+  return withEffectiveStatus(a);
+};
+
+const listAuctions = () =>
+  db.prepare(`
+    SELECT a.*, d.dealership_name, d.zip AS seller_zip,
+      (SELECT MAX(amount) FROM auction_bids WHERE auction_id = a.id) AS high_bid,
+      (SELECT COUNT(*) FROM auction_bids WHERE auction_id = a.id) AS bid_count
+    FROM auctions a JOIN dealers d ON d.id = a.dealer_id
+    ORDER BY a.created_at DESC
+  `).all().map(withEffectiveStatus);
+
+const getDealerAuctions = (dealerId) =>
+  db.prepare(`SELECT * FROM auctions WHERE dealer_id = ? ORDER BY created_at DESC`).all(dealerId)
+    .map(withEffectiveStatus);
+
+const getAuctionBids = (auctionId) =>
+  db.prepare(`
+    SELECT b.*, d.dealership_name
+    FROM auction_bids b JOIN dealers d ON d.id = b.dealer_id
+    WHERE b.auction_id = ? ORDER BY b.amount DESC, b.created_at ASC
+  `).all(auctionId);
+
+const getHighBid = (auctionId) =>
+  db.prepare(`
+    SELECT b.*, d.dealership_name, d.contact_name, d.phone, d.email AS dealer_email
+    FROM auction_bids b JOIN dealers d ON d.id = b.dealer_id
+    WHERE b.auction_id = ? ORDER BY b.amount DESC, b.created_at ASC LIMIT 1
+  `).get(auctionId);
+
+const placeBid = (auctionId, dealerId, amount) =>
+  db.prepare(`INSERT INTO auction_bids (auction_id, dealer_id, amount, created_at) VALUES (?, ?, ?, ?)`)
+    .run(auctionId, dealerId, amount, new Date().toISOString());
+
+const extendAuction = (id, endsAtIso) =>
+  db.prepare(`UPDATE auctions SET ends_at = ? WHERE id = ?`).run(endsAtIso, id);
+
+const setAuctionStatus = (id, status) =>
+  db.prepare(`UPDATE auctions SET status = ? WHERE id = ?`).run(status, id);
+
+const acceptAuctionBid = (id, bidId) =>
+  db.prepare(`UPDATE auctions SET status = 'accepted', winner_bid_id = ? WHERE id = ?`).run(bidId, id);
+
+const getBidById = (id) =>
+  db.prepare(`
+    SELECT b.*, d.dealership_name, d.contact_name, d.phone, d.email AS dealer_email
+    FROM auction_bids b JOIN dealers d ON d.id = b.dealer_id
+    WHERE b.id = ?
+  `).get(id);
+
+// Approved dealers with a live membership (auction alert + bidding pool).
+const listActiveDealers = () =>
+  db.prepare(`SELECT * FROM dealers WHERE status = 'approved' AND membership_status = 'active'`).all();
+
+// ---- notifications ----
+const createNotification = (dealerId, kind, refId, message) =>
+  db.prepare(`INSERT INTO notifications (dealer_id, kind, ref_id, message, created_at) VALUES (?, ?, ?, ?, ?)`)
+    .run(dealerId, kind, refId, message, new Date().toISOString());
+
+const listUnreadNotifications = (dealerId) =>
+  db.prepare(`SELECT * FROM notifications WHERE dealer_id = ? AND read_at IS NULL ORDER BY created_at DESC`).all(dealerId);
+
+const markNotificationsRead = (dealerId) =>
+  db.prepare(`UPDATE notifications SET read_at = ? WHERE dealer_id = ? AND read_at IS NULL`)
+    .run(new Date().toISOString(), dealerId);
+
 // ---- demo dealer (used for admin-posted demo listings) ----
 const DEMO_DEALER_EMAIL = 'demo@tradeautox.com';
 async function ensureDemoDealer() {
@@ -194,21 +346,27 @@ async function ensureDemoDealer() {
       license_number: 'DEMO',
       license_photo_path: null,
       terms_accepted_at: new Date().toISOString(),
+      zip: '30339',
     });
     d = getDealerById(info.lastInsertRowid);
   }
   if (d.status !== 'approved') setDealerStatus(d.id, 'approved');
   if (d.membership_status !== 'active') setMembership(d.id, 'active');
+  if (!d.zip) setDealerZip(d.id, '30339');
   return getDealerById(d.id);
 }
 
 module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
-  listDealersByStatus, listAllDealers,
+  setDealerZip, listDealersByStatus, listAllDealers,
   createListing, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
+  createAuction, addAuctionPhoto, getAuctionPhotos, getAuction, listAuctions,
+  getDealerAuctions, getAuctionBids, getHighBid, placeBid, extendAuction,
+  setAuctionStatus, acceptAuctionBid, getBidById, listActiveDealers,
+  createNotification, listUnreadNotifications, markNotificationsRead,
   ensureDemoDealer, DEMO_DEALER_EMAIL,
 };

@@ -1,0 +1,146 @@
+<%- include('partials/header') %>
+
+<p class="muted small"><a href="/auctions">← All live auctions</a></p>
+
+<h1>
+  <% if (auction.status === 'live') { %><span class="live-badge">LIVE</span> <% } %>
+  <%= auction.year %> <%= auction.make %> <%= auction.model %><% if (auction.trim) { %> <%= auction.trim %><% } %>
+</h1>
+<p class="muted">
+  Seller: <%= auction.dealership_name %><% if (auction.distance != null) { %> · <%= auction.distance %> mi away<% } %>
+  <% if (auction.vin) { %> · VIN <%= auction.vin %><% } %>
+</p>
+
+<% if (typeof notice !== 'undefined' && notice) { %><p class="alert ok"><%= notice %></p><% } %>
+<% if (typeof error !== 'undefined' && error) { %><p class="alert error"><%= error %></p><% } %>
+
+<% if (photos.length) { %>
+  <div class="photo-grid">
+    <% photos.forEach(p => { %><img src="<%= p.path %>" alt="Vehicle photo"><% }) %>
+  </div>
+<% } %>
+
+<div class="auction-grid">
+  <section class="panel">
+    <h2>Bidding</h2>
+    <% if (auction.status === 'live') { %>
+      <p class="countdown">Ends in <span id="countdown">—</span></p>
+    <% } else if (auction.status === 'accepted') { %>
+      <p class="alert ok"><strong>Sold.</strong> A bid was accepted on this vehicle.</p>
+    <% } else if (auction.status === 'cancelled') { %>
+      <p class="alert warn"><strong>Cancelled</strong> by the seller.</p>
+    <% } else { %>
+      <p class="alert warn"><strong>Ended.</strong><% if (isSeller && highBid) { %> You can still accept the high bid below.<% } %></p>
+    <% } %>
+
+    <p class="high-bid" id="high-bid"><%= highBid ? fmtMoney(highBid.amount) : 'No bids yet' %></p>
+    <p class="muted small"><span id="bid-count"><%= bids.length %></span> bid<%= bids.length === 1 ? '' : 's' %></p>
+
+    <% if (isSeller && auction.target_price) { %>
+      <p class="muted">Your number: <strong><%= fmtMoney(auction.target_price) %></strong>
+        <span id="target-note"><% if (highBid && highBid.amount >= auction.target_price) { %> — <strong class="ok-text">target met</strong><% } %></span>
+      </p>
+    <% } %>
+
+    <% if (!isSeller && auction.status === 'live' && viewerId) { %>
+      <form class="form" method="post" action="/auctions/<%= auction.id %>/bid">
+        <label>Your bid (USD)
+          <input name="amount" inputmode="numeric" required placeholder="<%= highBid ? (highBid.amount + 100) : 5000 %>">
+        </label>
+        <button class="btn" type="submit">Place bid</button>
+      </form>
+    <% } %>
+
+    <% if (isSeller && highBid && auction.status !== 'accepted' && auction.status !== 'cancelled') { %>
+      <form method="post" action="/auctions/<%= auction.id %>/accept" onsubmit="return confirm('Accept the high bid of <%= fmtMoney(highBid.amount) %> from <%= highBid.dealership_name %>?');">
+        <button class="btn" type="submit">Accept high bid — <%= fmtMoney(highBid.amount) %></button>
+      </form>
+    <% } %>
+    <% if (isSeller && auction.status === 'live') { %>
+      <form method="post" action="/auctions/<%= auction.id %>/cancel" onsubmit="return confirm('Cancel this auction?');" style="margin-top:8px">
+        <button class="btn btn-sm btn-ghost" type="submit">Cancel auction</button>
+      </form>
+    <% } %>
+
+    <h3 style="margin-top:18px">Bid history</h3>
+    <ul class="bid-list" id="bid-list">
+      <% if (!bids.length) { %><li class="muted">No bids yet.</li><% } %>
+      <% bids.forEach(b => { %>
+        <li><strong><%= fmtMoney(b.amount) %></strong> — <%= b.dealership_name %>
+          <span class="muted small"><%= new Date(b.created_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }) %> ET</span></li>
+      <% }) %>
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Vehicle</h2>
+    <div class="spec-list">
+      <% if (auction.mileage) { %><div><span class="muted">Mileage</span><br><%= Number(auction.mileage).toLocaleString('en-US') %> mi</div><% } %>
+      <% if (auction.body_style) { %><div><span class="muted">Body</span><br><%= auction.body_style %></div><% } %>
+      <% if (auction.engine) { %><div><span class="muted">Engine</span><br><%= auction.engine %></div><% } %>
+      <% if (auction.drivetrain) { %><div><span class="muted">Drivetrain</span><br><%= auction.drivetrain %></div><% } %>
+      <% if (auction.transmission) { %><div><span class="muted">Transmission</span><br><%= auction.transmission %></div><% } %>
+      <% if (auction.fuel) { %><div><span class="muted">Fuel</span><br><%= auction.fuel %></div><% } %>
+    </div>
+    <% if (auction.description) { %><p style="margin-top:12px"><%= auction.description %></p><% } %>
+
+    <% if (showContacts && winner) { %>
+      <h3 style="margin-top:18px">Deal contacts</h3>
+      <p><strong>Seller:</strong> <%= auction.dealership_name %> — <%= auction.contact_name %><br>
+      Phone: <%= auction.phone || '—' %> · Email: <%= auction.dealer_email %></p>
+      <p><strong>Buyer:</strong> <%= winner.dealership_name %> — <%= winner.contact_name %><br>
+      Phone: <%= winner.phone || '—' %> · Email: <%= winner.dealer_email %></p>
+      <p class="muted small">TradeAutoX is a venue only — the sale happens directly between buyer and seller, as-is.</p>
+    <% } else if (auction.status !== 'accepted') { %>
+      <p class="muted small" style="margin-top:12px">Seller contact details are revealed to the winning bidder once a bid is accepted.</p>
+    <% } %>
+  </section>
+</div>
+
+<script>
+(function () {
+  var endsAt = new Date('<%= auction.ends_at %>').getTime();
+  var status = '<%= auction.status %>';
+  var countdownEl = document.getElementById('countdown');
+  var highBidEl = document.getElementById('high-bid');
+  var bidCountEl = document.getElementById('bid-count');
+  var bidListEl = document.getElementById('bid-list');
+  var targetNote = document.getElementById('target-note');
+  var money = function (n) { return '$' + Number(n).toLocaleString('en-US'); };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+
+  function tick() {
+    if (!countdownEl) return;
+    var left = endsAt - Date.now();
+    if (left <= 0) { countdownEl.textContent = '0:00'; return; }
+    var s = Math.floor(left / 1000);
+    var m = Math.floor(s / 60);
+    var h = Math.floor(m / 60);
+    countdownEl.textContent = (h > 0 ? h + ':' + String(m % 60).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0');
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  if (status === 'live') {
+    setInterval(async function () {
+      try {
+        var res = await fetch('/auctions/<%= auction.id %>/state');
+        if (!res.ok) return;
+        var data = await res.json();
+        endsAt = new Date(data.endsAt).getTime();
+        if (data.status !== 'live') { location.reload(); return; }
+        highBidEl.textContent = data.highBid ? money(data.highBid) : 'No bids yet';
+        bidCountEl.textContent = data.bidCount;
+        if (targetNote && data.targetMet) targetNote.innerHTML = ' — <strong class="ok-text">target met</strong>';
+        bidListEl.innerHTML = data.bids.length ? data.bids.map(function (b) {
+          var t = new Date(b.at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+          return '<li><strong>' + money(b.amount) + '</strong> — ' + esc(b.dealer) + (b.mine ? ' (you)' : '') +
+            ' <span class="muted small">' + t + ' ET</span></li>';
+        }).join('') : '<li class="muted">No bids yet.</li>';
+      } catch (e) { /* keep polling */ }
+    }, 3000);
+  }
+})();
+</script>
+
+<%- include('partials/footer') %>

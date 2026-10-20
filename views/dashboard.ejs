@@ -9,6 +9,56 @@
 <% } %>
 <p class="muted small"><a href="/change-password">Change password</a></p>
 
+<% if (typeof notifications !== 'undefined' && notifications.length) { %>
+<section class="panel">
+  <h2>New alerts</h2>
+  <% notifications.forEach(n => { %>
+    <p><% if (n.kind === 'auction_alert' || n.kind === 'auction_won' || n.kind === 'auction_outbid') { %><span class="live-badge">LIVE</span> <% } %><%= n.message %><% if (n.ref_id) { %> <a href="/auctions/<%= n.ref_id %>">Open</a><% } %></p>
+  <% }) %>
+</section>
+<% } %>
+
+<% if (typeof liveNearMe !== 'undefined' && liveNearMe.length) { %>
+<section class="panel">
+  <h2>Live auctions near you</h2>
+  <% liveNearMe.forEach(a => { %>
+    <p><span class="live-badge">LIVE</span> <a href="/auctions/<%= a.id %>"><%= a.year %> <%= a.make %> <%= a.model %><% if (a.trim) { %> <%= a.trim %><% } %></a> — <%= a.distance %> mi away · <%= a.dealership_name %> · ends <%= new Date(a.ends_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) %> ET</p>
+  <% }) %>
+</section>
+<% } %>
+
+<section class="panel">
+  <h2>Dealership ZIP</h2>
+  <p class="muted small">Your ZIP powers radius search on the board and decides which live auctions alert you.</p>
+  <form class="form" method="post" action="/dashboard/zip">
+    <div class="row">
+      <label>ZIP code
+        <input name="zip" inputmode="numeric" maxlength="5" value="<%= dealer.zip || '' %>" placeholder="e.g. 30339">
+      </label>
+    </div>
+    <button class="btn btn-sm" type="submit"><%= dealer.zip ? 'Update ZIP' : 'Save ZIP' %></button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Live auctions <a class="btn btn-sm" href="/auctions/new">Start one</a> <a class="btn btn-sm btn-ghost" href="/auctions">All live</a></h2>
+  <% if (typeof myAuctions === 'undefined' || !myAuctions.length) { %>
+    <p class="muted">No auctions yet. Working a trade-in? Fire it live and let nearby dealers bid in real time.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Vehicle</th><th>Status</th><th>Ends / ended</th><th></th></tr>
+      <% myAuctions.forEach(a => { %>
+        <tr>
+          <td><a href="/auctions/<%= a.id %>"><%= a.year %> <%= a.make %> <%= a.model %></a></td>
+          <td><% if (a.status === 'live') { %><span class="live-badge">LIVE</span><% } else { %><%= a.status %><% } %></td>
+          <td><%= new Date(a.ends_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) %> ET</td>
+          <td><a href="/auctions/<%= a.id %>">Open</a></td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+</section>
+
 <section class="panel">
   <h2>Membership</h2>
   <% if (dealer.status === 'pending') { %>
