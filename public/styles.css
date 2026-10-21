@@ -77,7 +77,7 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
 
 .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: #26292f; color: var(--chrome); }
 .pill-approved, .pill-active { background: #052e16; color: #86efac; }
-.pill-pending, .pill-past_due { background: #451a03; color: #fcd34d; }
+.pill-pending, .pill-past_due, .pill-suspended { background: #451a03; color: #fcd34d; }
 .pill-rejected, .pill-inactive, .pill-none { background: #450a0a; color: #fca5a5; }
 
 /* verified badge */

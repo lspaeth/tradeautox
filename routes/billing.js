@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireLogin } = require('../lib/auth');
 const { getStripe, stripeConfigured, baseUrl } = require('../lib/stripe');
+const { sendMail, paymentProblemEmail } = require('../lib/mail');
 
 const router = express.Router();
 
@@ -131,8 +132,16 @@ async function handleWebhook(req, res) {
             incomplete_expired: 'inactive',
           };
           const status = map[sub.status] || 'inactive';
+          const prev = dealer.membership_status;
           db.setMembership(dealer.id, status, sub.id);
           console.log(`membership ${status} for dealer ${dealer.id}`);
+          // Tell the admin the moment a dealer stops paying — once, on the
+          // transition into past_due/inactive, not on every Stripe retry.
+          if ((status === 'past_due' || status === 'inactive') && prev !== status && process.env.ADMIN_EMAIL) {
+            const msg = paymentProblemEmail(dealer, status);
+            sendMail({ to: process.env.ADMIN_EMAIL, ...msg }).catch((err) =>
+              console.error('[mail] payment problem alert failed:', err.message));
+          }
         }
         break;
       }

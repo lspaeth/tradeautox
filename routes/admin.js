@@ -36,9 +36,15 @@ router.get('/logout', (req, res) => {
 });
 
 router.get('/', requireAdmin, (req, res) => {
+  const members = db.listAllDealers();
   res.render('admin', {
     pending: db.listDealersByStatus('pending'),
-    members: db.listAllDealers(),
+    members,
+    // Dealers who stopped paying: card failing (past_due) or subscription
+    // ended (inactive). The demo dealer never bills, so it's excluded.
+    paymentIssues: members.filter((d) =>
+      d.email !== db.DEMO_DEALER_EMAIL && d.status !== 'rejected' &&
+      (d.membership_status === 'past_due' || d.membership_status === 'inactive')),
     resets: db.listOpenPasswordResets(),
     demoEmail: db.DEMO_DEALER_EMAIL,
   });
@@ -59,6 +65,25 @@ router.post('/dealers/:id/approve', requireAdmin, (req, res) => {
 
 router.post('/dealers/:id/reject', requireAdmin, (req, res) => {
   db.setDealerStatus(req.params.id, 'rejected');
+  res.redirect('/admin');
+});
+
+// Suspend an approved dealer: login is blocked, listings and auctions drop
+// off the board, billing is untouched. Reversible via reactivate. The demo
+// dealer is protected — demo posting depends on it.
+router.post('/dealers/:id/suspend', requireAdmin, (req, res) => {
+  const dealer = db.getDealerById(req.params.id);
+  if (dealer && dealer.email !== db.DEMO_DEALER_EMAIL && dealer.status === 'approved') {
+    db.setDealerStatus(dealer.id, 'suspended');
+  }
+  res.redirect('/admin');
+});
+
+router.post('/dealers/:id/reactivate', requireAdmin, (req, res) => {
+  const dealer = db.getDealerById(req.params.id);
+  if (dealer && dealer.email !== db.DEMO_DEALER_EMAIL && dealer.status === 'suspended') {
+    db.setDealerStatus(dealer.id, 'approved');
+  }
   res.redirect('/admin');
 });
 

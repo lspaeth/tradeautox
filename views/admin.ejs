@@ -3,6 +3,23 @@
 <h1>Admin panel</h1>
 <p><a class="btn btn-sm" href="/admin/listings/new">Post a demo vehicle</a> <span class="muted small">— list a vehicle under the TradeAutoX demo seller to show how it works.</span></p>
 
+<% if (paymentIssues.length) { %>
+<section class="panel">
+  <h2>⚠ Payment problems (<%= paymentIssues.length %>)</h2>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Dealership</th><th>Contact</th><th>Membership</th></tr>
+    <% paymentIssues.forEach(d => { %>
+      <tr>
+        <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span></td>
+        <td><%= d.contact_name %></td>
+        <td><span class="pill pill-<%= d.membership_status %>"><%= d.membership_status === 'past_due' ? 'past due — card failing' : 'inactive — no longer paying' %></span></td>
+      </tr>
+    <% }) %>
+  </table></div>
+  <p class="muted small">Past due = Stripe is retrying their card; the dealer is locked out of the board and their listings are hidden until it goes through. Inactive = the subscription ended. You also get an email the moment a dealer flips to either one.</p>
+</section>
+<% } %>
+
 <section class="panel">
   <h2>Pending applications (<%= pending.length %>)</h2>
   <% if (!pending.length) { %>
@@ -67,6 +84,16 @@
         <td class="muted small"><%= d.stripe_customer_id || '—' %></td>
         <td>
           <% if (d.email !== demoEmail) { %>
+            <% if (d.status === 'approved') { %>
+              <form method="post" action="/admin/dealers/<%= d.id %>/suspend" style="display:inline">
+                <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Suspend this dealer? They will be locked out and their listings hidden until you reactivate them. Their subscription keeps billing — remove the account instead to stop billing.')">Suspend</button>
+              </form>
+            <% } %>
+            <% if (d.status === 'suspended') { %>
+              <form method="post" action="/admin/dealers/<%= d.id %>/reactivate" style="display:inline">
+                <button class="btn btn-xs" type="submit">Reactivate</button>
+              </form>
+            <% } %>
             <form method="post" action="/admin/dealers/<%= d.id %>/remove" style="display:inline">
               <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Remove this dealer permanently? Their listings, auctions, bids and photos will be deleted, and any live subscription will be canceled. This cannot be undone.')">Remove</button>
             </form>

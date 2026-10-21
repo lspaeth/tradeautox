@@ -64,6 +64,9 @@ router.post('/login', async (req, res) => {
   if (dealer.status === 'rejected') {
     return res.status(403).render('login', { error: 'This account was not approved. Contact support.', notice: null });
   }
+  if (dealer.status === 'suspended') {
+    return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
+  }
   req.session.dealerId = dealer.id;
   if (dealer.must_change_password) {
     return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
