@@ -165,6 +165,29 @@ const listDealersByStatus = (status) =>
 const listAllDealers = () =>
   db.prepare(`SELECT * FROM dealers ORDER BY created_at DESC`).all();
 
+// Stored /uploads/... paths belonging to a dealer (license photo, listing
+// photos + verification reports, auction photos) — collected before a delete
+// so the caller can unlink the files; the rows themselves cascade.
+const getDealerFilePaths = (id) => {
+  const rows = [];
+  const dealer = db.prepare(`SELECT license_photo_path FROM dealers WHERE id = ?`).get(id);
+  if (dealer && dealer.license_photo_path) rows.push(dealer.license_photo_path);
+  rows.push(...db.prepare(
+    `SELECT verification_report AS path FROM listings WHERE dealer_id = ? AND verification_report IS NOT NULL`
+  ).all(id).map((r) => r.path));
+  rows.push(...db.prepare(
+    `SELECT p.path FROM listing_photos p JOIN listings l ON l.id = p.listing_id WHERE l.dealer_id = ?`
+  ).all(id).map((r) => r.path));
+  rows.push(...db.prepare(
+    `SELECT p.path FROM auction_photos p JOIN auctions a ON a.id = p.auction_id WHERE a.dealer_id = ?`
+  ).all(id).map((r) => r.path));
+  return rows;
+};
+
+// Hard delete — listings, photos, auctions, bids, notifications and password
+// resets all cascade (ON DELETE CASCADE, foreign_keys pragma ON).
+const deleteDealer = (id) => db.prepare(`DELETE FROM dealers WHERE id = ?`).run(id);
+
 // ---- listings ----
 const createListing = (l) => db.prepare(`
   INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report,
@@ -359,7 +382,7 @@ async function ensureDemoDealer() {
 module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
-  setDealerZip, listDealersByStatus, listAllDealers,
+  setDealerZip, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
   createListing, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,

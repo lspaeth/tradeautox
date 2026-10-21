@@ -58,13 +58,20 @@
 <section class="panel">
   <h2>All dealers (<%= members.length %>)</h2>
   <div class="table-scroll"><table class="table">
-    <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th></tr>
+    <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th><th></th></tr>
     <% members.forEach(d => { %>
       <tr>
         <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %></span></td>
         <td><span class="pill pill-<%= d.status %>"><%= d.status %></span></td>
         <td><span class="pill pill-<%= d.membership_status %>"><%= d.membership_status %></span></td>
         <td class="muted small"><%= d.stripe_customer_id || '—' %></td>
+        <td>
+          <% if (d.email !== demoEmail) { %>
+            <form method="post" action="/admin/dealers/<%= d.id %>/remove" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Remove this dealer permanently? Their listings, auctions, bids and photos will be deleted, and any live subscription will be canceled. This cannot be undone.')">Remove</button>
+            </form>
+          <% } %>
+        </td>
       </tr>
     <% }) %>
   </table></div>

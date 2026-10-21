@@ -1,10 +1,13 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireAdmin } = require('../lib/auth');
 const { createListingFromRequest } = require('../lib/listings');
+const { getStripe, stripeConfigured } = require('../lib/stripe');
 
 const router = express.Router();
 
@@ -37,6 +40,7 @@ router.get('/', requireAdmin, (req, res) => {
     pending: db.listDealersByStatus('pending'),
     members: db.listAllDealers(),
     resets: db.listOpenPasswordResets(),
+    demoEmail: db.DEMO_DEALER_EMAIL,
   });
 });
 
@@ -55,6 +59,41 @@ router.post('/dealers/:id/approve', requireAdmin, (req, res) => {
 
 router.post('/dealers/:id/reject', requireAdmin, (req, res) => {
   db.setDealerStatus(req.params.id, 'rejected');
+  res.redirect('/admin');
+});
+
+// Permanently remove a dealer account (e.g. the launch test account) along
+// with everything attached to it. A live Stripe subscription is canceled
+// first so a removed dealer is never billed for a deleted account; if Stripe
+// can't confirm the cancel, removal aborts and nothing is deleted. The demo
+// dealer is protected — demo posting depends on it.
+router.post('/dealers/:id/remove', requireAdmin, async (req, res) => {
+  const dealer = db.getDealerById(req.params.id);
+  if (!dealer) return res.redirect('/admin');
+  if (dealer.email === db.DEMO_DEALER_EMAIL) return res.redirect('/admin');
+
+  if (dealer.stripe_subscription_id && stripeConfigured()) {
+    try {
+      const stripe = getStripe();
+      const sub = await stripe.subscriptions.retrieve(dealer.stripe_subscription_id);
+      if (['active', 'trialing', 'past_due', 'unpaid'].includes(sub.status)) {
+        await stripe.subscriptions.cancel(dealer.stripe_subscription_id);
+      }
+    } catch (err) {
+      console.error('[admin] dealer remove aborted — Stripe check failed:', err.message);
+      return res.status(500).send(
+        'Could not verify/cancel this dealer\'s Stripe subscription, so nothing was removed. ' +
+        'Cancel the subscription in the Stripe Dashboard first, then remove the dealer.'
+      );
+    }
+  }
+
+  const uploadsDir = path.join(process.env.DATA_DIR || path.join(__dirname, '..'), 'uploads');
+  const files = db.getDealerFilePaths(dealer.id);
+  db.deleteDealer(dealer.id);
+  for (const p of files) {
+    fs.unlink(path.join(uploadsDir, path.basename(p)), () => {});
+  }
   res.redirect('/admin');
 });
 
