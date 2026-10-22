@@ -1,0 +1,23 @@
+<%# Driver's-license scanner — include ONLY on the signup page.
+    Overlay markup + ZXing CDN build + /dl-scan.js. The logic binds to
+    #dl-scan-btn / #dl-payload / #dl-status / #dl-skip already on the page.
+    Decoding is client-side only: the license image never leaves the phone;
+    only the barcode's text payload rides along with the form. Overlay
+    styling reuses the VIN scanner's .vin-scan-* classes. %>
+<div id="dl-scan-overlay" class="vin-scan-overlay" hidden>
+  <div class="vin-scan-panel" role="dialog" aria-modal="true" aria-label="Scan driver's license barcode">
+    <div class="vin-scan-head">
+      <strong>Scan license barcode</strong>
+      <button type="button" class="vin-scan-close" id="dl-scan-close" aria-label="Close scanner">&times;</button>
+    </div>
+    <video id="dl-scan-video" class="vin-scan-video" autoplay muted playsinline></video>
+    <p id="dl-scan-status" class="vin-scan-status" aria-live="polite">Starting camera…</p>
+    <div class="vin-scan-actions">
+      <label class="btn btn-ghost" id="dl-scan-photo-label" for="dl-scan-file">Use a photo of the license back</label>
+      <input type="file" id="dl-scan-file" class="visually-hidden" accept="image/*" capture="environment">
+    </div>
+    <button type="button" class="btn btn-ghost" id="dl-scan-cancel">Cancel</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+<script src="/dl-scan.js"></script>

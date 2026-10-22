@@ -33,6 +33,19 @@
   <label>License photo <span class="muted small">(image upload — on your phone, tap to use the camera)</span>
     <input type="file" name="license_photo" accept="image/*" capture="environment">
   </label>
+  <fieldset class="dl-verify">
+    <legend>Verify your driver's license</legend>
+    <p class="muted small">Scan the barcode on the <strong>back</strong> of your driver's license and your
+      application arrives at approval pre-checked — name and expiration verified against the card.</p>
+    <button type="button" class="btn btn-sm" id="dl-scan-btn">📷 Scan driver's license</button>
+    <p id="dl-status" class="muted small" aria-live="polite">Not scanned yet.</p>
+    <label class="check">
+      <input type="checkbox" id="dl-skip" value="1">
+      No camera right now — I'll verify at approval
+    </label>
+    <p class="muted small">Privacy: the photo of your license never leaves your phone — only the details printed on the card are read and sent.</p>
+    <input type="hidden" name="dl_payload" id="dl-payload" value="">
+  </fieldset>
   <label class="check">
     <input type="checkbox" name="accept_terms" value="1" required>
     I accept the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a> *
@@ -41,4 +54,5 @@
 </form>
 
 <%- include('partials/password-toggle') %>
+<%- include('partials/dl-scanner') %>
 <%- include('partials/footer') %>

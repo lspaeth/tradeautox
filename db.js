@@ -146,11 +146,35 @@ for (const col of ['color', 'title_status']) {
   }
 }
 
+// Best-effort migrations: driver's-license scan check at signup. Only the
+// barcode's extracted text fields + computed check results are stored — the
+// license image itself is decoded in the applicant's browser and never
+// uploaded. dl_scanned_at NULL means the applicant did not scan.
+for (const col of [
+  'dl_scanned_at TEXT', 'dl_name TEXT', 'dl_dob TEXT', 'dl_expires TEXT',
+  'dl_number TEXT', 'dl_address TEXT', 'dl_city TEXT', 'dl_state TEXT',
+  'dl_zip TEXT', 'dl_name_match TEXT', 'dl_expired INTEGER',
+]) {
+  try {
+    db.exec(`ALTER TABLE dealers ADD COLUMN ${col}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
-  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip)
-  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip)
-`).run({ zip: null, ...d });
+  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
+    dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
+  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
+    @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
+`).run({
+  zip: null,
+  dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
+  dl_number: null, dl_address: null, dl_city: null, dl_state: null,
+  dl_zip: null, dl_name_match: null, dl_expired: null,
+  ...d,
+});
 
 const setDealerZip = (id, zip) =>
   db.prepare(`UPDATE dealers SET zip = ? WHERE id = ?`).run(zip || null, id);

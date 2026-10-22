@@ -26,13 +26,25 @@
     <p class="muted">No pending applications.</p>
   <% } else { %>
     <div class="table-scroll"><table class="table">
-      <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Applied</th><th></th></tr>
+      <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Driver's license check</th><th>Applied</th><th></th></tr>
       <% pending.forEach(d => { %>
         <tr>
           <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span></td>
           <td><%= d.contact_name %></td>
           <td><%= d.license_number %></td>
           <td><% if (d.license_photo_path) { %><a href="<%= d.license_photo_path %>" target="_blank" rel="noopener">View</a><% } else { %><span class="muted">—</span><% } %></td>
+          <td><% if (d.dl_scanned_at) { %>
+            <div class="dl-check">
+              <div><strong><%= d.dl_name || '—' %></strong><% if (d.dl_state) { %> · <%= d.dl_state %><% } %></div>
+              <div>Expires: <%= d.dl_expires || '—' %><% if (d.dl_expired) { %> <span class="dl-expired">EXPIRED</span><% } %></div>
+              <% if (d.dl_name_match === 'match') { %>
+                <div><span class="dl-ok">✓ Name matches</span> application</div>
+              <% } else if (d.dl_name_match === 'mismatch') { %>
+                <div><span class="dl-bad">⚠ Name mismatch</span><br>License: <%= d.dl_name || '—' %><br>Application: <%= d.contact_name %></div>
+              <% } %>
+              <div class="muted">DL # <%= d.dl_number || '—' %> · scanned <%= String(d.dl_scanned_at).slice(0, 10) %></div>
+            </div>
+          <% } else { %><span class="muted">Not scanned</span><% } %></td>
           <td class="small"><%= d.created_at %></td>
           <td>
             <form method="post" action="/admin/dealers/<%= d.id %>/approve" style="display:inline">
