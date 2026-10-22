@@ -1,6 +1,9 @@
 <%- include('partials/header') %>
 
-<h1>Wholesale board</h1>
+<div class="board-head">
+  <h1>Wholesale board</h1>
+  <%- include('partials/vintel-partner') %>
+</div>
 
 <form class="filters" method="get" action="/listings">
   <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">

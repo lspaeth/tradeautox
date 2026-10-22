@@ -1,0 +1,12 @@
+<%#
+  Vintel partner spot — shown at the top-right of the wholesale board.
+  PARTNER LINK: to point the button at a referral/partner URL once a deal
+  with Vintel is signed, change this ONE line:
+%>
+<% const VINTEL_MEMBER_URL = 'https://govintel.com/'; %>
+<aside class="partner-card" aria-label="Partner: Vintel">
+  <p class="partner-label">Partner</p>
+  <h2 class="partner-headline">Verified cars get the bids.</h2>
+  <p class="partner-copy">Listings carrying a Vintel diagnostic report wear the red <span class="verified-badge sm">✓ Verified</span> badge on this board — and buyers bid with confidence. Run a scan, attach the report, badge your cars.</p>
+  <a class="btn btn-sm" href="<%= VINTEL_MEMBER_URL %>" target="_blank" rel="noopener sponsored">Become a Vintel Member</a>
+</aside>

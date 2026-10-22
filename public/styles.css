@@ -85,6 +85,13 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
 .verified-badge.sm { font-size: 0.7rem; padding: 1px 8px; vertical-align: middle; }
 
 /* listings */
+.board-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.board-head h1 { margin: 0; }
+.partner-card { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 12px; padding: 16px 18px; max-width: 340px; flex: 1 1 260px; }
+.partner-label { margin: 0 0 6px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.partner-headline { margin: 0 0 6px; font-size: 1.15rem; }
+.partner-copy { margin: 0 0 12px; font-size: 0.9rem; color: var(--chrome); }
+@media (max-width: 640px) { .partner-card { max-width: none; flex-basis: 100%; } }
 .filters { display: flex; gap: 10px; margin: 16px 0 24px; flex-wrap: wrap; }
 .filters input { padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 1rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
