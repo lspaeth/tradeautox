@@ -16,7 +16,7 @@
       </tr>
     <% }) %>
   </table></div>
-  <p class="muted small">Past due = Stripe is retrying their card; the dealer is locked out of the board and their listings are hidden until it goes through. Inactive = the subscription ended. You also get an email the moment a dealer flips to either one.</p>
+  <p class="muted small">Past due = Stripe is retrying their card; the dealer keeps full board access meanwhile and is only locked out if the subscription ends. Inactive = the subscription ended and the dealer is locked out. You also get an email the moment a dealer flips to either one.</p>
 </section>
 <% } %>
 
@@ -86,7 +86,7 @@
           <% if (d.email !== demoEmail) { %>
             <% if (d.status === 'approved') { %>
               <form method="post" action="/admin/dealers/<%= d.id %>/suspend" style="display:inline">
-                <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Suspend this dealer? They will be locked out and their listings hidden until you reactivate them. Their subscription keeps billing — remove the account instead to stop billing.')">Suspend</button>
+                <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Suspend this dealer? They will be locked out and their listings hidden until you reactivate them, and their subscription billing will be paused (no charges while suspended).')">Suspend</button>
               </form>
             <% } %>
             <% if (d.status === 'suspended') { %>

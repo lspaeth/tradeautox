@@ -225,7 +225,7 @@ function searchListings({ make, maxPrice }) {
   let sql = `
     SELECT l.*, d.dealership_name, d.zip AS seller_zip
     FROM listings l JOIN dealers d ON d.id = l.dealer_id
-    WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status = 'active'`;
+    WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status IN ('active', 'past_due')`;
   const params = [];
   if (make) { sql += ` AND lower(l.make) LIKE ?`; params.push(`%${make.toLowerCase()}%`); }
   if (maxPrice) { sql += ` AND l.price <= ?`; params.push(Number(maxPrice)); }
@@ -350,8 +350,10 @@ const getBidById = (id) =>
   `).get(id);
 
 // Approved dealers with a live membership (auction alert + bidding pool).
+// past_due dealers are included: a failing card flags them for the admin but
+// they keep trading until Stripe gives up and the membership goes inactive.
 const listActiveDealers = () =>
-  db.prepare(`SELECT * FROM dealers WHERE status = 'approved' AND membership_status = 'active'`).all();
+  db.prepare(`SELECT * FROM dealers WHERE status = 'approved' AND membership_status IN ('active', 'past_due')`).all();
 
 // ---- notifications ----
 const createNotification = (dealerId, kind, refId, message) =>

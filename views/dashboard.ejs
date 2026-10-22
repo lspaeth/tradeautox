@@ -72,7 +72,7 @@
     </form>
     <p class="muted small">Update your card, view invoices, or cancel from the secure billing portal.</p>
   <% } else if (dealer.membership_status === 'past_due') { %>
-    <p class="alert error"><strong>Payment past due.</strong> Update your payment method to keep trading.</p>
+    <p class="alert error"><strong>Payment past due.</strong> Your last $599 charge failed and Stripe is retrying your card. You can keep trading meanwhile, but update your payment method soon — if the retries run out, your subscription ends and your access is paused.</p>
     <form method="post" action="/billing/portal" style="display:inline">
       <button class="btn btn-sm" type="submit">Update payment method</button>
     </form>

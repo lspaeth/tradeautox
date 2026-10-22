@@ -123,6 +123,11 @@ async function handleWebhook(req, res) {
         const sub = event.data.object;
         const dealer = db.getDealerByStripeCustomer(sub.customer);
         if (dealer) {
+          // past_due is a flag, not a lockout: the dealer keeps full board
+          // access while Stripe retries (see BOARD_ACCESS_STATUSES in
+          // lib/auth.js). Only when Stripe gives up — unpaid, canceled, or
+          // the subscription is deleted — does the dealer become 'inactive'
+          // and lose access. A later 'active' update clears the flag.
           const map = {
             active: 'active',
             trialing: 'active',

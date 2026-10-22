@@ -69,21 +69,75 @@ router.post('/dealers/:id/reject', requireAdmin, (req, res) => {
 });
 
 // Suspend an approved dealer: login is blocked, listings and auctions drop
-// off the board, billing is untouched. Reversible via reactivate. The demo
-// dealer is protected — demo posting depends on it.
-router.post('/dealers/:id/suspend', requireAdmin, (req, res) => {
+// off the board, AND subscription billing is paused (Stripe pause_collection,
+// behavior "void" — the subscription stays in place, no invoices or charges
+// while paused). Reversible via reactivate, which resumes collection.
+// Same discipline as dealer removal: if the dealer has a live subscription
+// and the pause/resume can't be verified in Stripe, the state change aborts
+// so access and billing never silently desync. Dealers with no subscription
+// suspend/reactivate with no Stripe call. The demo dealer is protected —
+// demo posting depends on it.
+router.post('/dealers/:id/suspend', requireAdmin, async (req, res) => {
   const dealer = db.getDealerById(req.params.id);
-  if (dealer && dealer.email !== db.DEMO_DEALER_EMAIL && dealer.status === 'approved') {
-    db.setDealerStatus(dealer.id, 'suspended');
+  if (!dealer || dealer.email === db.DEMO_DEALER_EMAIL || dealer.status !== 'approved') {
+    return res.redirect('/admin');
   }
+
+  if (dealer.stripe_subscription_id && stripeConfigured()) {
+    try {
+      const stripe = getStripe();
+      const sub = await stripe.subscriptions.retrieve(dealer.stripe_subscription_id);
+      const billable = ['active', 'trialing', 'past_due', 'unpaid'].includes(sub.status);
+      if (billable && !sub.pause_collection) {
+        await stripe.subscriptions.update(dealer.stripe_subscription_id, {
+          pause_collection: { behavior: 'void' },
+        });
+        const check = await stripe.subscriptions.retrieve(dealer.stripe_subscription_id);
+        if (!check.pause_collection || check.pause_collection.behavior !== 'void') {
+          throw new Error('Stripe did not confirm the billing pause');
+        }
+      }
+    } catch (err) {
+      console.error('[admin] suspend aborted — Stripe pause failed:', err.message);
+      return res.status(500).send(
+        'Could not pause this dealer\'s Stripe billing, so they were NOT suspended. ' +
+        'Pause the subscription in the Stripe Dashboard first, then suspend the dealer.'
+      );
+    }
+  }
+
+  db.setDealerStatus(dealer.id, 'suspended');
   res.redirect('/admin');
 });
 
-router.post('/dealers/:id/reactivate', requireAdmin, (req, res) => {
+router.post('/dealers/:id/reactivate', requireAdmin, async (req, res) => {
   const dealer = db.getDealerById(req.params.id);
-  if (dealer && dealer.email !== db.DEMO_DEALER_EMAIL && dealer.status === 'suspended') {
-    db.setDealerStatus(dealer.id, 'approved');
+  if (!dealer || dealer.email === db.DEMO_DEALER_EMAIL || dealer.status !== 'suspended') {
+    return res.redirect('/admin');
   }
+
+  if (dealer.stripe_subscription_id && stripeConfigured()) {
+    try {
+      const stripe = getStripe();
+      const sub = await stripe.subscriptions.retrieve(dealer.stripe_subscription_id);
+      if (sub.pause_collection) {
+        // An empty pause_collection clears the pause and resumes collection.
+        await stripe.subscriptions.update(dealer.stripe_subscription_id, { pause_collection: '' });
+        const check = await stripe.subscriptions.retrieve(dealer.stripe_subscription_id);
+        if (check.pause_collection) {
+          throw new Error('Stripe did not confirm billing resumed');
+        }
+      }
+    } catch (err) {
+      console.error('[admin] reactivate aborted — Stripe resume failed:', err.message);
+      return res.status(500).send(
+        'Could not resume this dealer\'s Stripe billing, so they were NOT reactivated. ' +
+        'Resume the subscription in the Stripe Dashboard first, then reactivate the dealer.'
+      );
+    }
+  }
+
+  db.setDealerStatus(dealer.id, 'approved');
   res.redirect('/admin');
 });
 
