@@ -1,0 +1,30 @@
+<%# VIN camera scanner — include ONLY on pages with a VIN field (listing-new, auction-new).
+    Markup for the scanner overlay + ZXing/Tesseract CDN builds + /vin-scan.js.
+    The logic binds to #vin-scan-btn / #vin-input / #vin-status already on the page. %>
+<div id="vin-scan-overlay" class="vin-scan-overlay" hidden>
+  <div class="vin-scan-panel" role="dialog" aria-modal="true" aria-label="Scan VIN">
+    <div class="vin-scan-head">
+      <strong>Scan VIN</strong>
+      <button type="button" class="vin-scan-close" id="vin-scan-close" aria-label="Close scanner">&times;</button>
+    </div>
+    <video id="vin-scan-video" class="vin-scan-video" autoplay muted playsinline></video>
+    <p id="vin-scan-status" class="vin-scan-status" aria-live="polite">Starting camera…</p>
+    <div id="vin-scan-confirm" hidden>
+      <p class="vin-scan-note">Read from a photo — please check every character:</p>
+      <p id="vin-scan-found" class="vin-scan-found"></p>
+      <div class="vin-scan-actions">
+        <button type="button" class="btn" id="vin-scan-use">Use this VIN</button>
+        <button type="button" class="btn btn-ghost" id="vin-scan-retry">Try again</button>
+      </div>
+    </div>
+    <div class="vin-scan-actions" id="vin-scan-main-actions">
+      <button type="button" class="btn btn-ghost" id="vin-scan-snap">📸 Snap photo (no barcode)</button>
+      <label class="btn btn-ghost" for="vin-scan-file">Use a photo</label>
+      <input type="file" id="vin-scan-file" class="visually-hidden" accept="image/*" capture="environment">
+    </div>
+    <button type="button" class="btn btn-ghost" id="vin-scan-cancel">Cancel — type it instead</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js"></script>
+<script src="/vin-scan.js"></script>

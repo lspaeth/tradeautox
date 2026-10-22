@@ -11,11 +11,12 @@
 
 <form class="form" method="post" action="<%= formAction %>" enctype="multipart/form-data">
   <div class="row">
-    <label>VIN <span class="muted small">(type it in — we'll fill in the rest)</span>
+    <label>VIN <span class="muted small">(type it, scan the barcode, or snap a photo — we'll fill in the rest)</span>
       <span class="vin-wrap">
         <input name="vin" id="vin-input" maxlength="17" autocapitalize="characters" spellcheck="false"
                placeholder="17-character VIN" style="text-transform:uppercase">
         <button type="button" class="btn btn-sm" id="vin-decode-btn">Decode</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="vin-scan-btn">📷 Scan VIN</button>
       </span>
     </label>
   </div>
@@ -109,5 +110,7 @@
   });
 })();
 </script>
+
+<%- include('partials/vin-scanner') %>
 
 <%- include('partials/footer') %>
