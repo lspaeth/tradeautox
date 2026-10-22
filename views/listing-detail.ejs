@@ -27,6 +27,8 @@
   <% if (listing.transmission) { %><dt>Transmission</dt><dd><%= listing.transmission %></dd><% } %>
   <% if (listing.fuel) { %><dt>Fuel</dt><dd><%= listing.fuel %></dd><% } %>
   <% if (listing.doors) { %><dt>Doors</dt><dd><%= listing.doors %></dd><% } %>
+  <% if (listing.color) { %><dt>Color</dt><dd><%= listing.color %></dd><% } %>
+  <% if (listing.title_status) { %><dt>Title</dt><dd><%= listing.title_status %></dd><% } %>
   <% if (listing.mileage) { %><dt>Mileage</dt><dd><%= Number(listing.mileage).toLocaleString() %> mi</dd><% } %>
   <dt>Seller</dt><dd><%= listing.dealership_name %></dd>
   <dt>Contact</dt><dd><%= listing.contact_name %><% if (listing.phone) { %> — <%= listing.phone %><% } %></dd>

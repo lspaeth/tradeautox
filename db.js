@@ -137,6 +137,15 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migrations: color + title status on listings (bulk import columns).
+for (const col of ['color', 'title_status']) {
+  try {
+    db.exec(`ALTER TABLE listings ADD COLUMN ${col} TEXT`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip)
@@ -191,10 +200,13 @@ const deleteDealer = (id) => db.prepare(`DELETE FROM dealers WHERE id = ?`).run(
 // ---- listings ----
 const createListing = (l) => db.prepare(`
   INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report,
-    trim, body_style, drivetrain, engine, transmission, fuel, doors)
+    trim, body_style, drivetrain, engine, transmission, fuel, doors, color, title_status)
   VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report,
-    @trim, @body_style, @drivetrain, @engine, @transmission, @fuel, @doors)
-`).run(l);
+    @trim, @body_style, @drivetrain, @engine, @transmission, @fuel, @doors, @color, @title_status)
+`).run({ color: null, title_status: null, ...l });
+
+const getActiveListingByVin = (dealerId, vin) =>
+  db.prepare(`SELECT id FROM listings WHERE dealer_id = ? AND vin = ? AND status = 'active'`).get(dealerId, vin);
 
 const addListingPhoto = (listingId, p) =>
   db.prepare(`INSERT INTO listing_photos (listing_id, path) VALUES (?, ?)`).run(listingId, p);
@@ -383,7 +395,7 @@ module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   setDealerZip, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
-  createListing, addListingPhoto, getListing, getListingPhotos,
+  createListing, getActiveListingByVin, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,

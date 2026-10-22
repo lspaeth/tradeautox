@@ -8,6 +8,7 @@
     "setup-stripe": "node scripts/setup-stripe.js"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.10.0",
     "dotenv": "^16.4.5",

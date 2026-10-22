@@ -1,0 +1,78 @@
+<%- include('partials/header') %>
+
+<h1>Bulk import</h1>
+<p class="muted">Bringing a whole fleet over? Import up to <strong>200 vehicles at once</strong> — specs are filled in automatically from each VIN, and your existing photos are matched to each car. No re-shooting, no typing VINs one by one.</p>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+
+<% if (report) { %>
+<section class="panel">
+  <h2>Import report</h2>
+  <p>
+    <strong><%= report.created.length %></strong> listing<%= report.created.length === 1 ? '' : 's' %> created ·
+    <strong><%= report.skipped.length %></strong> skipped ·
+    <strong><%= report.errors.length %></strong> error<%= report.errors.length === 1 ? '' : 's' %>
+  </p>
+
+  <% if (report.created.length) { %>
+    <h3>Created</h3>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Vehicle</th><th>VIN</th><th>Photos</th><th></th></tr>
+      <% report.created.forEach(c => { %>
+        <tr>
+          <td><%= c.label %></td>
+          <td><%= c.vin %></td>
+          <td><% if (c.noPhotos) { %><span class="muted">none matched — listing created without photos</span><% } else { %><%= c.photoCount %><% } %></td>
+          <td><a href="/listings/<%= c.id %>">View listing</a></td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+
+  <% if (report.skipped.length) { %>
+    <h3>Skipped</h3>
+    <% report.skipped.forEach(s => { %>
+      <p><strong><%= s.row %></strong> · <%= s.vin %> — <%= s.message %></p>
+    <% }) %>
+  <% } %>
+
+  <% if (report.errors.length) { %>
+    <h3>Errors</h3>
+    <% report.errors.forEach(e => { %>
+      <p><strong><%= e.row %></strong> · <%= e.vin %> — <%= e.message %></p>
+    <% }) %>
+  <% } %>
+
+  <% report.notes.forEach(n => { %>
+    <p class="alert warn"><%= n %></p>
+  <% }) %>
+</section>
+<% } %>
+
+<form class="form" method="post" action="/listings/bulk" enctype="multipart/form-data">
+  <label>Vehicle list (CSV) *
+    <input type="file" name="csv_file" accept=".csv,text/csv" required>
+  </label>
+  <label>Photos (ZIP) <span class="muted small">(optional — name each photo file starting with the car's VIN)</span>
+    <input type="file" name="photos_zip" accept=".zip,application/zip">
+  </label>
+  <button class="btn" type="submit">Import listings</button>
+</form>
+
+<section class="panel">
+  <h2>File format</h2>
+  <p><strong>CSV</strong> — a spreadsheet saved as .csv, first row is a header row. <a href="/listings/bulk/sample.csv">Download a sample CSV</a>.</p>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Column</th><th>Required</th><th>Notes</th></tr>
+    <tr><td><code>vin</code></td><td>Yes</td><td>17 characters. Year, make, model and trim are decoded from the VIN automatically.</td></tr>
+    <tr><td><code>price</code></td><td>Yes</td><td>Asking price in whole dollars (e.g. 12500 or 12,500).</td></tr>
+    <tr><td><code>mileage</code></td><td>No</td><td>Odometer miles.</td></tr>
+    <tr><td><code>color</code></td><td>No</td><td>Exterior color.</td></tr>
+    <tr><td><code>title_status</code></td><td>No</td><td>e.g. Clean, Rebuilt, Salvage.</td></tr>
+    <tr><td><code>description</code></td><td>No</td><td>Free text — condition, options, history. Wrap it in quotes if it contains commas.</td></tr>
+  </table></div>
+  <p><strong>Photos ZIP</strong> — one .zip of your photos (JPG, PNG, WebP or GIF). Each photo's filename must <strong>begin with the vehicle's VIN</strong>, e.g. <code>1HGCM82633A004352_1.jpg</code>, <code>1HGCM82633A004352-2.jpg</code>. Up to 8 photos per car are attached, in filename order. A car whose row is otherwise valid is still listed if no photos match — the import report flags it.</p>
+  <p class="muted small">Limits: 200 vehicles per import, CSV up to 100&nbsp;MB, ZIP up to 100&nbsp;MB. Rows that duplicate a VIN you already have listed are skipped, and one bad row never stops the rest of the batch.</p>
+</section>
+
+<%- include('partials/footer') %>
