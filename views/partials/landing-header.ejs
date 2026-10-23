@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradeAutoX — Wholesale vehicles, on demand</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0a0b0d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TradeAutoX">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
+</script>
+</head>
+<body>
+<header class="landing-nav">
+  <div class="landing-nav-inner">
+    <a class="landing-brand" href="/"><img src="/logo.png" alt="TradeAutoX"></a>
+    <nav class="landing-links">
+      <a href="/listings">Listings</a>
+      <a href="/auctions">Live Auctions</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/about">About Us</a>
+      <% if (currentDealer) { %>
+        <a href="/dashboard">Dashboard</a>
+      <% } else { %>
+        <a href="/login">Log In</a>
+        <a class="btn btn-sm landing-apply" href="/signup">Apply for Access</a>
+      <% } %>
+    </nav>
+  </div>
+</header>
+<main class="landing">
