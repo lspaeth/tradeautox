@@ -3,13 +3,15 @@ const db = require('../db');
 const { requireLogin } = require('../lib/auth');
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
+const { daysOnSiteLabel } = require('../lib/listings');
 
 const router = express.Router();
 
 router.get('/', requireLogin, (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer) { req.session.destroy(() => res.redirect('/login')); return; }
-  const listings = db.getDealerListings(dealer.id);
+  const listings = db.getDealerListings(dealer.id)
+    .map((l) => ({ ...l, daysOnSite: daysOnSiteLabel(l.created_at) }));
   const notifications = db.listUnreadNotifications(dealer.id);
   const myAuctions = db.getDealerAuctions(dealer.id).slice(0, 5);
   const liveNearMe = dealer.zip

@@ -13,6 +13,20 @@
     <p class="landing-fineprint">Wholesale license required. Applications are reviewed before activation.
        Card required at signup — nothing is charged until your 30-day trial ends.</p>
   </div>
+  <% if (featured) { %>
+  <a class="landing-live-card" href="/signup" aria-label="Apply for access to see this vehicle">
+    <% if (featured.photo) { %><img class="landing-live-photo" src="<%= featured.photo %>" alt="<%= featured.year %> <%= featured.make %> <%= featured.model %>"><% } %>
+    <div class="landing-live-body">
+      <div class="landing-live-top">
+        <span class="landing-live-title"><%= featured.year %> <%= featured.make %> <%= featured.model %><% if (featured.trim) { %> <%= featured.trim %><% } %></span>
+        <% if (featured.verified) { %><span class="verified-badge sm">&#10003; Verified</span><% } %>
+      </div>
+      <% if (featured.mileage) { %><div class="landing-live-meta"><%= featured.mileage.toLocaleString('en-US') %> miles</div><% } %>
+      <div class="landing-live-price">Approved dealers only</div>
+      <div class="landing-live-caption"><% if (featured.is_demo) { %>Demo vehicle<% } else { %>Live from the board<% } %></div>
+    </div>
+  </a>
+  <% } %>
   <a class="landing-scroll-hint" href="#story" aria-label="Scroll down to our story">
     <span>Scroll</span>
     <span class="landing-scroll-arrow">&#8595;</span>

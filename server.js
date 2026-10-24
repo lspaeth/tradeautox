@@ -26,6 +26,10 @@ app.use('/uploads', express.static(uploadsDir));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
+// Build stamp, visible in the footer on every page and via /version, so a live
+// deploy is verifiable instead of guessed at. Railway injects the commit SHA.
+app.locals.buildCommit = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || 'unknown';
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'tradeautox-dev-secret-change-me',
   resave: false,

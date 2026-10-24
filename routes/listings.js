@@ -6,7 +6,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireMember, requireMemberOrAdmin } = require('../lib/auth');
-const { createListingFromRequest } = require('../lib/listings');
+const { createListingFromRequest, daysOnSiteLabel } = require('../lib/listings');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
 
@@ -36,6 +36,7 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
   listings = listings.map((l) => ({
     ...l,
     distance: centerZip ? distanceMiles(centerZip, l.seller_zip) : null,
+    daysOnSite: daysOnSiteLabel(l.created_at),
   }));
   let radiusNoZip = false;
   if (radiusNum) {
@@ -237,6 +238,7 @@ router.post('/', requireMember, upload.listingUpload, (req, res) => {
 router.get('/:id', requireMemberOrAdmin, (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.status !== 'active') return res.status(404).render('404');
+  listing.daysOnSite = daysOnSiteLabel(listing.created_at);
   const photos = db.getListingPhotos(listing.id);
   const canManage = !!req.session.admin || req.session.dealerId === listing.dealer_id;
   res.render('listing-detail', { listing, photos, canManage });

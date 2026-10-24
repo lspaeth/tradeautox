@@ -31,7 +31,7 @@
         <div class="listing-card-body">
           <h3><%= l.year %> <%= l.make %> <%= l.model %><% if (l.verification_report) { %> <span class="verified-badge sm">✓</span><% } %></h3>
           <p class="price"><%= fmtMoney(l.price) %></p>
-          <p class="muted small"><%= l.dealership_name %><% if (l.distance != null) { %> · <%= l.distance %> mi away<% } %></p>
+          <p class="muted small"><%= l.dealership_name %><% if (l.distance != null) { %> · <%= l.distance %> mi away<% } %><% if (l.daysOnSite) { %> · <%= l.daysOnSite %><% } %></p>
         </div>
       </a>
     <% }) %>

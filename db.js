@@ -260,6 +260,19 @@ function searchListings({ make, maxPrice }) {
 const getDealerListings = (dealerId) =>
   db.prepare(`SELECT * FROM listings WHERE dealer_id = ? ORDER BY created_at DESC`).all(dealerId);
 
+// Public landing hero: newest active board listing, real dealers first, demo dealer
+// only as a fallback. The route strips this to public-safe fields (no price, no
+// seller identity) before rendering.
+const getFeaturedListing = () =>
+  db.prepare(`
+    SELECT l.*, d.email AS dealer_email,
+      (SELECT path FROM listing_photos WHERE listing_id = l.id ORDER BY id LIMIT 1) AS photo
+    FROM listings l JOIN dealers d ON d.id = l.dealer_id
+    WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status IN ('active', 'past_due')
+    ORDER BY (d.email = ?) ASC, l.created_at DESC
+    LIMIT 1
+  `).get(DEMO_DEALER_EMAIL);
+
 const setListingStatus = (id, dealerId, status) =>
   db.prepare(`UPDATE listings SET status = ? WHERE id = ? AND dealer_id = ?`).run(status, id, dealerId);
 
@@ -422,7 +435,7 @@ module.exports = {
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   setDealerZip, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
   createListing, getActiveListingByVin, addListingPhoto, getListing, getListingPhotos,
-  searchListings, getDealerListings, setListingStatus, setListingStatusById,
+  searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
   createAuction, addAuctionPhoto, getAuctionPhotos, getAuction, listAuctions,

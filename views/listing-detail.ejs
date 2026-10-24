@@ -55,6 +55,6 @@
   </section>
 <% } %>
 
-<p class="muted small">Listed <%= listing.created_at %>. Dealers transact directly — TradeAutoX charges no per-vehicle fees.</p>
+<p class="muted small"><% if (listing.daysOnSite) { %><%= listing.daysOnSite %><% } else { %>Listed <%= listing.created_at %><% } %>. Dealers transact directly — TradeAutoX charges no per-vehicle fees.</p>
 
 <%- include('partials/footer') %>

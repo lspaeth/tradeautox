@@ -94,12 +94,13 @@
     <p class="muted">No listings yet.</p>
   <% } else { %>
     <div class="table-scroll"><table class="table">
-      <tr><th>Vehicle</th><th>Price</th><th>Status</th><th></th></tr>
+      <tr><th>Vehicle</th><th>Price</th><th>Status</th><th>Days on site</th><th></th></tr>
       <% listings.forEach(l => { %>
         <tr>
           <td><a href="/listings/<%= l.id %>"><%= l.year %> <%= l.make %> <%= l.model %></a></td>
           <td><%= fmtMoney(l.price) %></td>
           <td><%= l.status %></td>
+          <td><%= l.daysOnSite || '—' %></td>
           <td>
             <% if (l.status === 'active') { %>
               <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
