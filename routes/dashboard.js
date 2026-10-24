@@ -3,7 +3,7 @@ const db = require('../db');
 const { requireLogin } = require('../lib/auth');
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
-const { daysOnSiteLabel } = require('../lib/listings');
+const { daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
 
 const router = express.Router();
 
@@ -11,7 +11,15 @@ router.get('/', requireLogin, (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer) { req.session.destroy(() => res.redirect('/login')); return; }
   const listings = db.getDealerListings(dealer.id)
-    .map((l) => ({ ...l, daysOnSite: daysOnSiteLabel(l.created_at) }));
+    .map((l) => {
+      const intent = l.status === 'active' ? db.getPurchaseIntent(l.id) : null;
+      return {
+        ...l,
+        daysOnSite: daysOnSiteLabel(l.created_at),
+        pendingSale: intent ? (PAYMENT_METHODS[intent.method] || intent.method) : null,
+        pendingBuyer: intent ? intent.buyer_name : null,
+      };
+    });
   const notifications = db.listUnreadNotifications(dealer.id);
   const myAuctions = db.getDealerAuctions(dealer.id).slice(0, 5);
   const liveNearMe = dealer.zip
@@ -39,7 +47,12 @@ router.post('/zip', requireLogin, (req, res) => {
     return res.redirect('/dashboard?notice=' + encodeURIComponent('Please enter a valid 5-digit ZIP code.'));
   }
   db.setDealerZip(dealer.id, cleanZip(req.body.zip));
-  res.redirect('/dashboard?notice=' + encodeURIComponent('Dealership ZIP saved — radius search and live auction alerts are on.'));
+  db.setDealerAddress(dealer.id, {
+    address: (req.body.address || '').trim(),
+    city: (req.body.city || '').trim(),
+    state: (req.body.state || '').trim(),
+  });
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Dealership address saved.'));
 });
 
 module.exports = router;

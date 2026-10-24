@@ -14,7 +14,7 @@ router.get('/signup', (req, res) => {
 
 router.post('/signup', upload.single('license_photo'), async (req, res) => {
   try {
-    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip } = req.body;
+    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state } = req.body;
     if (!dealership_name || !contact_name || !email || !password || !license_number) {
       return res.status(400).render('signup', { error: 'Please fill in all required fields.' });
     }
@@ -72,6 +72,9 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       license_photo_path: req.file ? `/uploads/${req.file.filename}` : null,
       terms_accepted_at: new Date().toISOString(),
       zip: cleanZip(zip),
+      address: (address || '').trim(),
+      city: (city || '').trim(),
+      state: (state || '').trim(),
       ...dlFields,
     });
     req.session.dealerId = info.lastInsertRowid;

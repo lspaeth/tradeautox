@@ -28,15 +28,26 @@
 <% } %>
 
 <section class="panel">
-  <h2>Dealership ZIP</h2>
-  <p class="muted small">Your ZIP powers radius search on the board and decides which live auctions alert you.</p>
+  <h2>Dealership address</h2>
+  <p class="muted small">Your ZIP powers radius search on the board and decides which live auctions alert you. Your street address appears on deal sheets so buyers know where to pick up.</p>
   <form class="form" method="post" action="/dashboard/zip">
     <div class="row">
+      <label>Street address
+        <input name="address" value="<%= dealer.address || '' %>" autocomplete="street-address">
+      </label>
+    </div>
+    <div class="row">
+      <label>City
+        <input name="city" value="<%= dealer.city || '' %>" autocomplete="address-level2">
+      </label>
+      <label>State
+        <input name="state" maxlength="2" value="<%= dealer.state || '' %>" autocomplete="address-level1" placeholder="GA">
+      </label>
       <label>ZIP code
         <input name="zip" inputmode="numeric" maxlength="5" value="<%= dealer.zip || '' %>" placeholder="e.g. 30339">
       </label>
     </div>
-    <button class="btn btn-sm" type="submit"><%= dealer.zip ? 'Update ZIP' : 'Save ZIP' %></button>
+    <button class="btn btn-sm" type="submit">Save address</button>
   </form>
 </section>
 
@@ -99,7 +110,7 @@
         <tr>
           <td><a href="/listings/<%= l.id %>"><%= l.year %> <%= l.make %> <%= l.model %></a></td>
           <td><%= fmtMoney(l.price) %></td>
-          <td><%= l.status %></td>
+          <td><%= l.status %><% if (l.pendingSale) { %> · Sale pending (<%= l.pendingSale %><% if (l.pendingBuyer) { %> — <%= l.pendingBuyer %><% } %>)<% } %></td>
           <td><%= l.daysOnSite || '—' %></td>
           <td>
             <% if (l.status === 'active') { %>

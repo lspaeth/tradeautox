@@ -24,6 +24,15 @@
   <label>Phone
     <input name="phone" type="tel">
   </label>
+  <label>Dealership street address <span class="muted small">(so deal sheets can list it)</span>
+    <input name="address" autocomplete="street-address">
+  </label>
+  <label>City
+    <input name="city" autocomplete="address-level2">
+  </label>
+  <label>State
+    <input name="state" maxlength="2" autocomplete="address-level1" placeholder="GA">
+  </label>
   <label>Dealership ZIP code * <span class="muted small">(powers radius search and live auction alerts)</span>
     <input name="zip" inputmode="numeric" maxlength="5" autocomplete="postal-code" required>
   </label>

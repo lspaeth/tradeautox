@@ -4,6 +4,9 @@
 
 <div class="alert warn"><strong>TradeAutoX is not a party to this transaction.</strong> All sales are strictly between buyer and seller, as-is.</div>
 
+<% if (notice) { %><p class="alert ok"><%= notice %></p><% } %>
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+
 <h1><%= listing.year %> <%= listing.make %> <%= listing.model %></h1>
 <% if (listing.verification_report) { %>
   <p><span class="verified-badge">✓ Verified</span> <span class="muted small">Seller provided a diagnostic verification report — <a href="<%= listing.verification_report %>" target="_blank" rel="noopener">view report</a></span></p>
@@ -37,6 +40,43 @@
 <% if (listing.description) { %>
   <h2>Description</h2>
   <p class="pre"><%= listing.description %></p>
+<% } %>
+
+<% if (intent && canManage) { %>
+  <section class="panel">
+    <h2>Sale pending — <%= intent.methodLabel %></h2>
+    <p><strong><%= intent.buyer_name %></strong> is buying this vehicle and chose <strong><%= intent.methodLabel %></strong>.</p>
+    <p>Buyer contact: <%= intent.buyer_contact %><% if (intent.buyer_phone) { %> — <%= intent.buyer_phone %><% } %> — <%= intent.buyer_email %></p>
+    <p><strong>Pull the car and mark it sold</strong> once the deal closes.</p>
+    <div class="cta-row">
+      <form method="post" action="/listings/<%= listing.id %>/cancel-intent" style="display:inline">
+        <button class="btn btn-sm btn-ghost" type="submit" onclick="return confirm('Cancel this pending sale? The listing will open back up.')">Cancel pending sale</button>
+      </form>
+    </div>
+  </section>
+<% } else if (intent && viewerIsBuyer) { %>
+  <section class="panel">
+    <h2>You bought this vehicle — <%= intent.methodLabel %></h2>
+    <p>Deal sheet emailed to you and the seller. The seller will pull the car<% if (intent.method === 'wire') { %> — send the wire and arrange pickup<% } else { %> — bring the check when you pick it up<% } %>.</p>
+  </section>
+<% } else if (intent) { %>
+  <p class="alert warn"><strong>Sale pending</strong> — this vehicle already has a buyer.</p>
+<% } else if (currentDealer && !canManage) { %>
+  <section class="panel">
+    <h2>Buy this vehicle</h2>
+    <p class="muted small">No money moves through TradeAutoX. Pick how you'll pay, and a printable deal sheet goes to you and the seller.</p>
+    <form method="post" action="/listings/<%= listing.id %>/buy">
+      <div class="row">
+        <label>How will you pay?
+          <select name="method" required>
+            <option value="wire">Wire transfer</option>
+            <option value="check">Check upon pickup</option>
+          </select>
+        </label>
+      </div>
+      <button class="btn" type="submit" onclick="return confirm('Buy this vehicle and notify the seller?')">Buy</button>
+    </form>
+  </section>
 <% } %>
 
 <% if (canManage) { %>

@@ -6,7 +6,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireMember, requireMemberOrAdmin } = require('../lib/auth');
-const { createListingFromRequest, daysOnSiteLabel } = require('../lib/listings');
+const { createListingFromRequest, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
 
@@ -37,6 +37,7 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
     ...l,
     distance: centerZip ? distanceMiles(centerZip, l.seller_zip) : null,
     daysOnSite: daysOnSiteLabel(l.created_at),
+    pendingSale: l.pending_method ? PAYMENT_METHODS[l.pending_method] || l.pending_method : null,
   }));
   let radiusNoZip = false;
   if (radiusNum) {
@@ -241,7 +242,55 @@ router.get('/:id', requireMemberOrAdmin, (req, res) => {
   listing.daysOnSite = daysOnSiteLabel(listing.created_at);
   const photos = db.getListingPhotos(listing.id);
   const canManage = !!req.session.admin || req.session.dealerId === listing.dealer_id;
-  res.render('listing-detail', { listing, photos, canManage });
+  const rawIntent = db.getPurchaseIntent(listing.id);
+  const intent = rawIntent
+    ? { ...rawIntent, methodLabel: PAYMENT_METHODS[rawIntent.method] || rawIntent.method }
+    : null;
+  const viewerIsBuyer = !!(req.session.dealerId && intent && intent.buyer_dealer_id === req.session.dealerId);
+  res.render('listing-detail', {
+    listing, photos, canManage, intent, viewerIsBuyer,
+    notice: req.query.notice || null,
+    error: req.query.error || null,
+  });
+});
+
+// Buy: a member dealer picks a payment method (wire or check on pickup).
+// Records the intent, then emails the printable deal sheet to BOTH buyer and
+// seller. No money moves through TradeAutoX — the deal closes directly
+// between them, and the seller marks the listing sold.
+router.post('/:id/buy', requireMember, async (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.status !== 'active') return res.status(404).render('404');
+  const method = req.body.method;
+  if (!['wire', 'check'].includes(method)) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('Pick a payment method: wire or check upon pickup.'));
+  }
+  if (listing.dealer_id === req.dealer.id) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('You cannot buy your own listing.'));
+  }
+  if (db.getPurchaseIntent(listing.id)) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('This vehicle already has a pending sale.'));
+  }
+  db.createPurchaseIntent(listing.id, req.dealer.id, method);
+  const seller = db.getDealerById(listing.dealer_id);
+  const { sendMail, dealSheetEmail } = require('../lib/mail');
+  const msg = dealSheetEmail({ seller, buyer: req.dealer, listing, method });
+  for (const to of [seller.email, req.dealer.email]) {
+    sendMail({ to, ...msg }).catch((err) =>
+      console.error(`[buy] deal sheet email to ${to} failed:`, err.message));
+  }
+  res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Done — deal sheet emailed to you and the seller.'));
+});
+
+// Seller (or admin) cancels a pending sale — e.g. the buyer never followed
+// through. The listing opens back up; nothing is marked sold.
+router.post('/:id/cancel-intent', (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing) return res.status(404).render('404');
+  const isOwner = req.session.dealerId === listing.dealer_id;
+  if (!isOwner && !req.session.admin) return res.redirect(`/listings/${listing.id}`);
+  db.deletePurchaseIntent(listing.id);
+  res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Pending sale cancelled — the listing is open again.'));
 });
 
 // Mark sold / remove (owner only)

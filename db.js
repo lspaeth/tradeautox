@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS listing_photos (
   path TEXT NOT NULL
 );
 
+-- One row per Buy click: buyer, payment method, when. The listing stays
+-- active until the seller marks it sold; this row drives "Sale pending".
+CREATE TABLE IF NOT EXISTS purchase_intents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  buyer_dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  method TEXT NOT NULL, -- wire | check
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS password_resets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
@@ -137,6 +147,16 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migration: dealership street address (deal sheet emails list the
+// address, phone, and point of contact for both buyer and seller).
+for (const col of ['address', 'city', 'state']) {
+  try {
+    db.exec(`ALTER TABLE dealers ADD COLUMN ${col} TEXT`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // Best-effort migrations: color + title status on listings (bulk import columns).
 for (const col of ['color', 'title_status']) {
   try {
@@ -165,11 +185,13 @@ for (const col of [
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
+    address, city, state,
     dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
   VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
+    @address, @city, @state,
     @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
 `).run({
-  zip: null,
+  zip: null, address: null, city: null, state: null,
   dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
   dl_number: null, dl_address: null, dl_city: null, dl_state: null,
   dl_zip: null, dl_name_match: null, dl_expired: null,
@@ -178,6 +200,10 @@ const createDealer = (d) => db.prepare(`
 
 const setDealerZip = (id, zip) =>
   db.prepare(`UPDATE dealers SET zip = ? WHERE id = ?`).run(zip || null, id);
+
+const setDealerAddress = (id, { address, city, state }) =>
+  db.prepare(`UPDATE dealers SET address = ?, city = ?, state = ? WHERE id = ?`)
+    .run(address || null, city || null, state || null, id);
 
 const getDealerByEmail = (email) => db.prepare(`SELECT * FROM dealers WHERE email = ?`).get(email);
 const getDealerById = (id) => db.prepare(`SELECT * FROM dealers WHERE id = ?`).get(id);
@@ -247,7 +273,8 @@ const getListingPhotos = (listingId) =>
 
 function searchListings({ make, maxPrice }) {
   let sql = `
-    SELECT l.*, d.dealership_name, d.zip AS seller_zip
+    SELECT l.*, d.dealership_name, d.zip AS seller_zip,
+      (SELECT method FROM purchase_intents WHERE listing_id = l.id LIMIT 1) AS pending_method
     FROM listings l JOIN dealers d ON d.id = l.dealer_id
     WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status IN ('active', 'past_due')`;
   const params = [];
@@ -259,6 +286,21 @@ function searchListings({ make, maxPrice }) {
 
 const getDealerListings = (dealerId) =>
   db.prepare(`SELECT * FROM listings WHERE dealer_id = ? ORDER BY created_at DESC`).all(dealerId);
+
+// ---- purchase intents (Buy flow) ----
+const createPurchaseIntent = (listingId, buyerDealerId, method) =>
+  db.prepare(`INSERT INTO purchase_intents (listing_id, buyer_dealer_id, method) VALUES (?, ?, ?)`).run(listingId, buyerDealerId, method);
+
+const getPurchaseIntent = (listingId) =>
+  db.prepare(`
+    SELECT pi.*, d.dealership_name AS buyer_name, d.contact_name AS buyer_contact,
+      d.phone AS buyer_phone, d.email AS buyer_email
+    FROM purchase_intents pi JOIN dealers d ON d.id = pi.buyer_dealer_id
+    WHERE pi.listing_id = ?
+  `).get(listingId);
+
+const deletePurchaseIntent = (listingId) =>
+  db.prepare(`DELETE FROM purchase_intents WHERE listing_id = ?`).run(listingId);
 
 // Public landing hero: newest active board listing, real dealers first, demo dealer
 // only as a fallback. The route strips this to public-safe fields (no price, no
@@ -433,7 +475,8 @@ async function ensureDemoDealer() {
 module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
-  setDealerZip, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
+  setDealerZip, setDealerAddress, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
+  createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
   createListing, getActiveListingByVin, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
