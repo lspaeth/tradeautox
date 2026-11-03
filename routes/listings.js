@@ -22,15 +22,45 @@ router.get('/api/decode-vin', (req, res) => {
     .catch(() => res.status(500).json({ error: 'VIN lookup failed — fill in the details manually.' }));
 });
 
-// Browse / search — members and admin
+// Browse / search — members and admin.
+// Search types (tab row, modeled on GM DealerWorld): Zip Code (default, the
+// existing filters), ID (one dealer's inventory by member number), Trade
+// Partners (the viewer's saved partners; dealer sessions only, not admin).
 router.get('/', requireMemberOrAdmin, (req, res) => {
-  const { make, max_price, radius, zip } = req.query;
+  const { make, max_price, radius, zip, search_type, member_number } = req.query;
   const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
-  const { currentDealer } = require('../lib/auth');
-  let listings = db.searchListings({ make: (make || '').trim(), maxPrice: max_price || null });
+  const { currentDealer, BOARD_ACCESS_STATUSES } = require('../lib/auth');
+  const viewer = currentDealer(req);
+  const isDealer = !!viewer && !req.session.admin;
+
+  let searchType = ['zip', 'id', 'partners'].includes(search_type) ? search_type : 'zip';
+  if (searchType === 'partners' && !isDealer) searchType = 'zip';
+
+  const baseFilters = { make: (make || '').trim(), maxPrice: max_price || null };
+  let listings;
+  let idDealer = null;
+  let idLookup = null;
+  let partnerCount = 0;
+
+  if (searchType === 'id') {
+    idLookup = (member_number || '').trim();
+    const n = parseInt(idLookup, 10);
+    const d = n ? db.getDealerByMemberNumber(n) : null;
+    if (d && d.status === 'approved' && BOARD_ACCESS_STATUSES.includes(d.membership_status)) {
+      idDealer = d;
+      listings = db.searchListings({ ...baseFilters, memberNumber: n });
+    } else {
+      listings = [];
+    }
+  } else if (searchType === 'partners') {
+    const partners = db.listTradePartners(viewer.id);
+    partnerCount = partners.length;
+    listings = db.searchListings({ ...baseFilters, dealerIds: partners.map((p) => p.id) });
+  } else {
+    listings = db.searchListings(baseFilters);
+  }
 
   // Radius filter: distance from the viewer's ZIP (or a typed ZIP) to each seller's ZIP.
-  const viewer = currentDealer(req);
   const centerZip = isValidZip(zip) ? cleanZip(zip) : (viewer && isValidZip(viewer.zip) ? viewer.zip : null);
   const radiusNum = [25, 50, 100, 250].includes(Number(radius)) ? Number(radius) : null;
   listings = listings.map((l) => ({
@@ -48,11 +78,22 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
         .sort((a, b) => a.distance - b.distance);
     }
   }
+  // Keep make / max_price when switching tabs.
+  const keep = [];
+  if (make) keep.push('make=' + encodeURIComponent(make));
+  if (max_price) keep.push('max_price=' + encodeURIComponent(max_price));
+  const keepQS = keep.length ? '&' + keep.join('&') : '';
   res.render('listings', {
     listings,
     radiusNoZip,
     centerZip,
-    filters: { make: make || '', max_price: max_price || '', radius: radius || '', zip: zip || '' },
+    searchType,
+    isDealer,
+    keepQS,
+    idDealer,
+    idLookup,
+    partnerCount,
+    filters: { make: make || '', max_price: max_price || '', radius: radius || '', zip: zip || '', member_number: member_number || '' },
   });
 });
 

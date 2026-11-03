@@ -52,6 +52,9 @@ router.get('/', requireAdmin, (req, res) => {
 
 router.post('/dealers/:id/approve', requireAdmin, (req, res) => {
   db.setDealerStatus(req.params.id, 'approved');
+  // Member ID is assigned at approval, before the welcome email is built so
+  // the email can include it. Idempotent — re-approvals never move the number.
+  db.assignMemberNumber(req.params.id);
   // Welcome email — fire and forget; approval must not fail if email does.
   const dealer = db.getDealerById(req.params.id);
   if (dealer) {
@@ -138,6 +141,7 @@ router.post('/dealers/:id/reactivate', requireAdmin, async (req, res) => {
   }
 
   db.setDealerStatus(dealer.id, 'approved');
+  db.assignMemberNumber(dealer.id); // idempotent — a suspended dealer keeps its original ID
   res.redirect('/admin');
 });
 

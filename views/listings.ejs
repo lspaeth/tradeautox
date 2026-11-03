@@ -5,17 +5,52 @@
   <%- include('partials/vintel-partner') %>
 </div>
 
-<form class="filters" method="get" action="/listings">
-  <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
-  <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
-  <select name="radius">
-    <option value=""<%= !filters.radius ? ' selected' : '' %>>Any distance</option>
-    <% [25, 50, 100, 250].forEach(r => { %><option value="<%= r %>"<%= String(filters.radius) === String(r) ? ' selected' : '' %>>Within <%= r %> mi</option><% }) %>
-  </select>
-  <input name="zip" placeholder="From ZIP" inputmode="numeric" maxlength="5" value="<%= filters.zip %>" style="max-width:110px">
-  <button class="btn btn-sm" type="submit">Filter</button>
-  <% if (filters.make || filters.max_price || filters.radius || filters.zip) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
-</form>
+<div class="search-types">
+  <span class="search-types-label">Select search type:</span>
+  <a class="search-tab<%= searchType === 'zip' ? ' active' : '' %>" href="/listings?search_type=zip<%= keepQS %>">Zip Code</a>
+  <a class="search-tab<%= searchType === 'id' ? ' active' : '' %>" href="/listings?search_type=id<%= keepQS %>">ID</a>
+  <% if (isDealer) { %><a class="search-tab<%= searchType === 'partners' ? ' active' : '' %>" href="/listings?search_type=partners<%= keepQS %>">Trade Partners</a><% } %>
+</div>
+
+<% const showClear = searchType !== 'zip' || filters.make || filters.max_price || filters.radius || filters.zip || filters.member_number; %>
+<% if (searchType === 'id') { %>
+  <form class="filters" method="get" action="/listings">
+    <input type="hidden" name="search_type" value="id">
+    <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
+    <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
+    <input name="member_number" placeholder="Dealer ID (e.g. 1001)" inputmode="numeric" value="<%= filters.member_number %>" style="max-width:170px">
+    <button class="btn btn-sm" type="submit">Filter</button>
+    <% if (showClear) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
+  </form>
+  <% if (idDealer) { %>
+    <p class="muted">Showing inventory for <strong><%= idDealer.dealership_name %></strong><% if (idDealer.city || idDealer.state) { %> (<%= [idDealer.city, idDealer.state].filter(Boolean).join(', ') %>)<% } %> — ID <%= idDealer.member_number %>.</p>
+  <% } else if (idLookup) { %>
+    <p class="alert warn">No approved dealer found with ID <%= idLookup %>.</p>
+  <% } else { %>
+    <p class="muted small">Enter a dealer's member ID above to see their inventory.</p>
+  <% } %>
+<% } else if (searchType === 'partners') { %>
+  <form class="filters" method="get" action="/listings">
+    <input type="hidden" name="search_type" value="partners">
+    <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
+    <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
+    <button class="btn btn-sm" type="submit">Filter</button>
+    <% if (showClear) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
+  </form>
+  <p class="muted">Showing inventory from your <%= partnerCount %> trade partner<%= partnerCount === 1 ? '' : 's' %>. <a href="/dashboard">Manage trade partners</a></p>
+<% } else { %>
+  <form class="filters" method="get" action="/listings">
+    <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
+    <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
+    <select name="radius">
+      <option value=""<%= !filters.radius ? ' selected' : '' %>>Any distance</option>
+      <% [25, 50, 100, 250].forEach(r => { %><option value="<%= r %>"<%= String(filters.radius) === String(r) ? ' selected' : '' %>>Within <%= r %> mi</option><% }) %>
+    </select>
+    <input name="zip" placeholder="From ZIP" inputmode="numeric" maxlength="5" value="<%= filters.zip %>" style="max-width:110px">
+    <button class="btn btn-sm" type="submit">Filter</button>
+    <% if (showClear) { %><a class="btn btn-sm btn-ghost" href="/listings">Clear</a><% } %>
+  </form>
+<% } %>
 <% if (radiusNoZip) { %>
   <p class="alert warn">To search by radius, enter a ZIP above or set your dealership ZIP on your <a href="/dashboard">dashboard</a>.</p>
 <% } else if (filters.radius && centerZip) { %>

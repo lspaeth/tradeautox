@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { requireLogin } = require('../lib/auth');
+const { requireLogin, BOARD_ACCESS_STATUSES } = require('../lib/auth');
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
 const { daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
@@ -33,7 +33,9 @@ router.get('/', requireLogin, (req, res) => {
     notifications,
     myAuctions,
     liveNearMe,
+    tradePartners: db.listTradePartners(dealer.id),
     notice: req.query.notice || null,
+    error: req.query.error || null,
     stripeConfigured: stripeConfigured() && !!process.env.STRIPE_PRICE_ID,
   });
   // Shown once as new; clear the unread flag after rendering.
@@ -53,6 +55,33 @@ router.post('/zip', requireLogin, (req, res) => {
     state: (req.body.state || '').trim(),
   });
   res.redirect('/dashboard?notice=' + encodeURIComponent('Dealership address saved.'));
+});
+
+// Trade partners (one-sided follow, v1): add a dealer by member ID.
+router.post('/trade-partners', requireLogin, (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer) return res.redirect('/login');
+  const fail = (msg) => res.redirect('/dashboard?error=' + encodeURIComponent(msg));
+  const raw = (req.body.member_number || '').trim();
+  const n = parseInt(raw, 10);
+  if (!n) return fail('Enter a dealer ID to add.');
+  const partner = db.getDealerByMemberNumber(n);
+  if (!partner) return fail(`No dealer found with ID ${raw}.`);
+  if (partner.id === dealer.id) return fail("You can't add yourself as a trade partner.");
+  if (partner.status !== 'approved' || !BOARD_ACCESS_STATUSES.includes(partner.membership_status)) {
+    return fail(`${partner.dealership_name} (ID ${n}) isn't an approved, active member right now.`);
+  }
+  if (db.listTradePartners(dealer.id).some((p) => p.id === partner.id)) {
+    return fail(`${partner.dealership_name} (ID ${n}) is already one of your trade partners.`);
+  }
+  db.addTradePartner(dealer.id, partner.id);
+  res.redirect('/dashboard?notice=' + encodeURIComponent(`Added ${partner.dealership_name} (ID ${n}) to your trade partners.`));
+});
+
+// Remove a trade partner.
+router.post('/trade-partners/:partnerId/remove', requireLogin, (req, res) => {
+  db.removeTradePartner(req.session.dealerId, req.params.partnerId);
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Trade partner removed.'));
 });
 
 module.exports = router;

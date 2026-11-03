@@ -94,6 +94,12 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
 @media (max-width: 640px) { .partner-card { max-width: none; flex-basis: 100%; } }
 .filters { display: flex; gap: 10px; margin: 16px 0 24px; flex-wrap: wrap; }
 .filters input { padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 1rem; }
+/* Board search-type tabs (modeled on GM DealerWorld's "Select Additional Search Type" row) */
+.search-types { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.search-types-label { font-weight: 600; margin-right: 4px; }
+.search-tab { display: inline-block; padding: 8px 18px; border-radius: 8px; background: #f6e8ec; color: #333; text-decoration: none; font-weight: 500; }
+.search-tab:hover { background: #eedbe2; color: #111; }
+.search-tab.active { background: #1d4ed8; color: #fff; font-weight: 700; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .listing-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: inherit; overflow: hidden; }
 .listing-card:hover { border-color: var(--brand); }

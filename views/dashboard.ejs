@@ -2,8 +2,10 @@
 
 <h1>Dashboard</h1>
 <p class="muted"><%= dealer.dealership_name %> — <%= dealer.contact_name %> (<%= dealer.email %>)</p>
+<% if (dealer.member_number) { %><p><strong>Your ID: <%= dealer.member_number %></strong> <span class="muted small">— other dealers can find your inventory by this ID</span></p><% } %>
 
 <% if (typeof notice !== 'undefined' && notice) { %><p class="alert ok"><%= notice %></p><% } %>
+<% if (typeof error !== 'undefined' && error) { %><p class="alert error"><%= error %></p><% } %>
 <% if (dealer.must_change_password) { %>
   <p class="alert warn"><strong>You're using a temporary password.</strong> <a href="/change-password">Set a new password</a> to secure your account.</p>
 <% } %>
@@ -96,6 +98,39 @@
     <% } else { %>
       <p class="alert warn">Online billing isn't configured on this server yet. Contact the site administrator to activate.</p>
     <% } %>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>Trade Partners <a class="btn btn-sm btn-ghost" href="/listings?search_type=partners">View their inventory</a></h2>
+  <p class="muted small">Follow the dealers you trade with regularly. Add them by their member ID, then filter the board to just their inventory.</p>
+  <form class="form" method="post" action="/dashboard/trade-partners">
+    <div class="row">
+      <label>Dealer ID
+        <input name="member_number" inputmode="numeric" placeholder="e.g. 1001">
+      </label>
+    </div>
+    <button class="btn btn-sm" type="submit">Add trade partner</button>
+  </form>
+  <% if (typeof tradePartners === 'undefined' || !tradePartners.length) { %>
+    <p class="muted">No trade partners yet.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>ID</th><th>Dealership</th><th>Location</th><th></th></tr>
+      <% tradePartners.forEach(p => { %>
+        <tr>
+          <td><%= p.member_number %></td>
+          <td><%= p.dealership_name %></td>
+          <td><%= [p.city, p.state].filter(Boolean).join(', ') || '—' %></td>
+          <td>
+            <a class="btn btn-xs btn-ghost" href="/listings?search_type=id&amp;member_number=<%= p.member_number %>">View inventory</a>
+            <form method="post" action="/dashboard/trade-partners/<%= p.id %>/remove" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table></div>
   <% } %>
 </section>
 

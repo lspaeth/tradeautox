@@ -87,9 +87,10 @@
 <section class="panel">
   <h2>All dealers (<%= members.length %>)</h2>
   <div class="table-scroll"><table class="table">
-    <tr><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th><th></th></tr>
+    <tr><th>ID</th><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th><th></th></tr>
     <% members.forEach(d => { %>
       <tr>
+        <td><%= d.member_number || '—' %></td>
         <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %></span></td>
         <td><span class="pill pill-<%= d.status %>"><%= d.status %></span></td>
         <td><span class="pill pill-<%= d.membership_status %>"><%= d.membership_status %></span></td>

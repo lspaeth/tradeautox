@@ -108,6 +108,16 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL,
   read_at TEXT
 );
+
+-- Trade partners: one-sided follow (v1, no mutual acceptance). A dealer
+-- saves the dealers they trade with regularly and can filter the board to
+-- just those partners' inventory.
+CREATE TABLE IF NOT EXISTS trade_partners (
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  partner_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (dealer_id, partner_id)
+);
 `);
 
 // Best-effort migration for databases created before terms_accepted_at existed.
@@ -182,6 +192,18 @@ for (const col of [
   }
 }
 
+// Best-effort migration: sequential member number ("ID" in the UI). Assigned
+// at approval in chronological order starting at 1001; a number is never
+// reused. SQLite can't add a UNIQUE column via ALTER TABLE, so the column
+// goes on plain and uniqueness is enforced by the index below (NULLs —
+// dealers not yet numbered — are allowed to repeat).
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN member_number INTEGER`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dealers_member_number ON dealers(member_number)`);
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
@@ -223,6 +245,46 @@ const listDealersByStatus = (status) =>
   db.prepare(`SELECT * FROM dealers WHERE status = ? ORDER BY created_at DESC`).all(status);
 const listAllDealers = () =>
   db.prepare(`SELECT * FROM dealers ORDER BY created_at DESC`).all();
+
+// ---- member numbers ("ID" in the UI) ----
+// Assigned at approval, chronological, starting at 1001, never reused.
+// Idempotent: only assigns when the dealer has no number yet, so calling it
+// twice (approve + reactivate, re-approvals) can never burn or move a number.
+const assignMemberNumber = (dealerId) =>
+  db.prepare(`
+    UPDATE dealers
+    SET member_number = (SELECT COALESCE(MAX(member_number), 1000) + 1 FROM dealers)
+    WHERE id = ? AND member_number IS NULL
+  `).run(dealerId);
+
+const getDealerByMemberNumber = (n) =>
+  db.prepare(`SELECT * FROM dealers WHERE member_number = ?`).get(Number(n));
+
+// Backfill: every non-rejected dealer without a number gets one, oldest
+// (lowest id) first, so existing dealers number up in onboarding order.
+function backfillMemberNumbers() {
+  const rows = db.prepare(
+    `SELECT id FROM dealers WHERE status != 'rejected' AND member_number IS NULL ORDER BY id ASC`
+  ).all();
+  for (const r of rows) assignMemberNumber(r.id);
+}
+backfillMemberNumbers();
+
+// ---- trade partners (one-sided follow, v1: no mutual acceptance) ----
+const addTradePartner = (dealerId, partnerId) =>
+  db.prepare(`INSERT OR IGNORE INTO trade_partners (dealer_id, partner_id) VALUES (?, ?)`).run(dealerId, partnerId);
+
+const removeTradePartner = (dealerId, partnerId) =>
+  db.prepare(`DELETE FROM trade_partners WHERE dealer_id = ? AND partner_id = ?`).run(dealerId, partnerId);
+
+// Saved partners that are still approved dealers (id, name, city/state, ID).
+const listTradePartners = (dealerId) =>
+  db.prepare(`
+    SELECT d.id, d.dealership_name, d.city, d.state, d.member_number
+    FROM trade_partners tp JOIN dealers d ON d.id = tp.partner_id
+    WHERE tp.dealer_id = ? AND d.status = 'approved'
+    ORDER BY d.dealership_name
+  `).all(dealerId);
 
 // Stored /uploads/... paths belonging to a dealer (license photo, listing
 // photos + verification reports, auction photos) — collected before a delete
@@ -271,7 +333,9 @@ const getListing = (id) =>
 const getListingPhotos = (listingId) =>
   db.prepare(`SELECT * FROM listing_photos WHERE listing_id = ? ORDER BY id`).all(listingId);
 
-function searchListings({ make, maxPrice }) {
+function searchListings({ make, maxPrice, memberNumber, dealerIds }) {
+  // A partner filter with no partners matches nothing (avoids `IN ()`).
+  if (dealerIds && !dealerIds.length) return [];
   let sql = `
     SELECT l.*, d.dealership_name, d.zip AS seller_zip,
       (SELECT method FROM purchase_intents WHERE listing_id = l.id LIMIT 1) AS pending_method
@@ -280,6 +344,11 @@ function searchListings({ make, maxPrice }) {
   const params = [];
   if (make) { sql += ` AND lower(l.make) LIKE ?`; params.push(`%${make.toLowerCase()}%`); }
   if (maxPrice) { sql += ` AND l.price <= ?`; params.push(Number(maxPrice)); }
+  if (memberNumber) { sql += ` AND d.member_number = ?`; params.push(Number(memberNumber)); }
+  if (dealerIds && dealerIds.length) {
+    sql += ` AND l.dealer_id IN (${dealerIds.map(() => '?').join(',')})`;
+    params.push(...dealerIds.map(Number));
+  }
   sql += ` ORDER BY l.created_at DESC`;
   return db.prepare(sql).all(...params);
 }
@@ -469,6 +538,7 @@ async function ensureDemoDealer() {
   if (d.status !== 'approved') setDealerStatus(d.id, 'approved');
   if (d.membership_status !== 'active') setMembership(d.id, 'active');
   if (!d.zip) setDealerZip(d.id, '30339');
+  backfillMemberNumbers(); // a lazily-created demo dealer gets the next ID
   return getDealerById(d.id);
 }
 
@@ -476,6 +546,8 @@ module.exports = {
   createDealer, getDealerByEmail, getDealerById, getDealerByStripeCustomer,
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   setDealerZip, setDealerAddress, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
+  assignMemberNumber, getDealerByMemberNumber, backfillMemberNumbers,
+  addTradePartner, removeTradePartner, listTradePartners,
   createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
   createListing, getActiveListingByVin, addListingPhoto, getListing, getListingPhotos,
   searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
