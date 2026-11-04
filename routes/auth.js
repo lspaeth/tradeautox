@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireLogin } = require('../lib/auth');
@@ -9,27 +10,44 @@ const router = express.Router();
 
 router.get('/signup', (req, res) => {
   if (req.session.dealerId) return res.redirect('/dashboard');
-  res.render('signup', { error: null });
+  res.render('signup', { error: null, form_ts: Date.now() });
 });
 
 router.post('/signup', upload.single('license_photo'), async (req, res) => {
   try {
+    // ---- invisible anti-spam: honeypot + time trap ----
+    // Dumb bots fill every field and/or submit instantly. Never tip them
+    // off: no error, no dealer row, no email — just the exact same 302 a
+    // legit signup gets, plus a one-line server log.
+    const spamTrap = (() => {
+      const hp = typeof req.body.website === 'string' ? req.body.website.trim() : '';
+      if (hp) return 'honeypot';
+      const ts = parseInt(req.body.form_ts, 10);
+      if (!Number.isFinite(ts) || ts > Date.now()) return 'time-trap';
+      if (Date.now() - ts < 4000) return 'time-trap';
+      return null;
+    })();
+    if (spamTrap) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      console.log(`[spam] blocked signup (${spamTrap})`);
+      return res.redirect('/dashboard');
+    }
     const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state } = req.body;
     if (!dealership_name || !contact_name || !email || !password || !license_number) {
-      return res.status(400).render('signup', { error: 'Please fill in all required fields.' });
+      return res.status(400).render('signup', { error: 'Please fill in all required fields.', form_ts: Date.now() });
     }
     const { cleanZip, isValidZip } = require('../lib/geo');
     if (!isValidZip(zip)) {
-      return res.status(400).render('signup', { error: 'Please enter a valid 5-digit dealership ZIP code.' });
+      return res.status(400).render('signup', { error: 'Please enter a valid 5-digit dealership ZIP code.', form_ts: Date.now() });
     }
     if (!accept_terms) {
-      return res.status(400).render('signup', { error: 'You must accept the Terms of Service to join.' });
+      return res.status(400).render('signup', { error: 'You must accept the Terms of Service to join.', form_ts: Date.now() });
     }
     if (password.length < 8) {
-      return res.status(400).render('signup', { error: 'Password must be at least 8 characters.' });
+      return res.status(400).render('signup', { error: 'Password must be at least 8 characters.', form_ts: Date.now() });
     }
     if (db.getDealerByEmail(email.trim().toLowerCase())) {
-      return res.status(400).render('signup', { error: 'An account with that email already exists.' });
+      return res.status(400).render('signup', { error: 'An account with that email already exists.', form_ts: Date.now() });
     }
     // Driver's-license scan (optional): the browser decoded the DL barcode
     // and submitted only its text payload (base64 — plain form fields get
@@ -81,7 +99,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
     res.redirect('/dashboard');
   } catch (err) {
     console.error(err);
-    res.status(500).render('signup', { error: 'Something went wrong. Please try again.' });
+    res.status(500).render('signup', { error: 'Something went wrong. Please try again.', form_ts: Date.now() });
   }
 });
 
