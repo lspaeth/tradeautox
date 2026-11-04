@@ -85,6 +85,61 @@
 </section>
 
 <section class="panel">
+  <h2>Admins</h2>
+  <div class="table-scroll"><table class="table">
+    <tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr>
+    <tr>
+      <td><%= ownerEmail || '—' %></td>
+      <td><span class="pill">Owner</span></td>
+      <td class="muted small">—</td>
+      <td class="muted small">Can't be removed</td>
+    </tr>
+    <% admins.forEach(a => { %>
+      <tr>
+        <td><%= a.email %></td>
+        <td>Admin</td>
+        <td class="small"><%= a.created_at %></td>
+        <td>
+          <% if (a.email === adminEmail) { %>
+            <span class="muted small">This is you</span>
+          <% } else { %>
+            <form method="post" action="/admin/admins/<%= a.id %>/remove" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Remove admin access for <%= a.email %>? They will be locked out immediately.')">Remove</button>
+            </form>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+  </table></div>
+
+  <h3 style="margin-top:1em">Open invite links (<%= invites.length %>)</h3>
+  <% if (!invites.length) { %>
+    <p class="muted">No open invites.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Link</th><th>Created</th><th>Expires</th><th></th></tr>
+      <% invites.forEach(i => { %>
+        <tr>
+          <td class="small" style="word-break:break-all"><%= i.link %></td>
+          <td class="small"><%= i.created_at %></td>
+          <td class="small"><%= i.expires_at %></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-xs" type="button" onclick="navigator.clipboard.writeText('<%= i.link %>').then(() => { this.textContent = 'Copied ✓'; })">Copy</button>
+            <form method="post" action="/admin/invites/<%= i.token %>/revoke" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Revoke this invite link?')">Revoke</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+  <form method="post" action="/admin/invites" style="margin-top:0.75em">
+    <button class="btn btn-sm" type="submit">Create invite link</button>
+    <span class="muted small"> — one-time use, expires in 48 hours. Send the link to the person yourself.</span>
+  </form>
+</section>
+
+<section class="panel">
   <h2>All dealers (<%= members.length %>)</h2>
   <div class="table-scroll"><table class="table">
     <tr><th>ID</th><th>Dealership</th><th>Status</th><th>Membership</th><th>Stripe customer</th><th></th></tr>

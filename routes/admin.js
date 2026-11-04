@@ -16,15 +16,24 @@ router.get('/login', (req, res) => {
   res.render('admin-login', { error: null });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminEmail || !adminPassword) {
     return res.status(500).render('admin-login', { error: 'Admin credentials are not configured on the server.' });
   }
+  // Owner login (env credentials) — behavior unchanged.
   if (email === adminEmail && password === adminPassword) {
     req.session.admin = true;
+    req.session.admin_email = adminEmail;
+    return res.redirect('/admin');
+  }
+  // Extra admin logins (invited, each with their own credentials).
+  const extra = email ? db.getAdminByEmail(String(email).toLowerCase().trim()) : null;
+  if (extra && await bcrypt.compare(password || '', extra.password_hash)) {
+    req.session.admin = true;
+    req.session.admin_email = extra.email;
     return res.redirect('/admin');
   }
   res.status(401).render('admin-login', { error: 'Invalid admin credentials.' });
@@ -32,11 +41,51 @@ router.post('/login', (req, res) => {
 
 router.get('/logout', (req, res) => {
   req.session.admin = false;
+  req.session.admin_email = null;
   res.redirect('/admin/login');
+});
+
+// One-time admin setup link. Public — the invitee isn't logged in yet.
+router.get('/setup/:token', (req, res) => {
+  const invite = db.getAdminInvite(req.params.token);
+  if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
+    return res.status(410).render('admin-setup', { invalid: true, error: null, email: '' });
+  }
+  res.render('admin-setup', { invalid: false, error: null, email: '' });
+});
+
+router.post('/setup/:token', async (req, res) => {
+  const invite = db.getAdminInvite(req.params.token);
+  if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
+    return res.status(410).render('admin-setup', { invalid: true, error: null, email: '' });
+  }
+  const email = String(req.body.email || '').toLowerCase().trim();
+  const password = String(req.body.password || '');
+  const confirm = String(req.body.confirm || '');
+  const fail = (error) =>
+    res.status(400).render('admin-setup', { invalid: false, error, email: String(req.body.email || '') });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Enter a valid email address.');
+  if (password.length < 8) return fail('Password must be at least 8 characters.');
+  if (password !== confirm) return fail('Passwords do not match.');
+  if (email === String(process.env.ADMIN_EMAIL || '').toLowerCase()) {
+    return fail('That email is already the owner login — use a different one.');
+  }
+  if (db.getAdminByEmail(email)) return fail('An admin with that email already exists.');
+  // Re-check the invite wasn't used between the form view and submit.
+  const fresh = db.getAdminInvite(req.params.token);
+  if (!fresh || fresh.used_at) {
+    return res.status(410).render('admin-setup', { invalid: true, error: null, email: '' });
+  }
+  db.createAdmin(email, await bcrypt.hash(password, 12));
+  db.markAdminInviteUsed(req.params.token);
+  req.session.admin = true;
+  req.session.admin_email = email;
+  res.redirect('/admin');
 });
 
 router.get('/', requireAdmin, (req, res) => {
   const members = db.listAllDealers();
+  const baseUrl = (process.env.BASE_URL || 'https://www.tradeautox.com').replace(/\/$/, '');
   res.render('admin', {
     pending: db.listDealersByStatus('pending'),
     members,
@@ -47,7 +96,37 @@ router.get('/', requireAdmin, (req, res) => {
       (d.membership_status === 'past_due' || d.membership_status === 'inactive')),
     resets: db.listOpenPasswordResets(),
     demoEmail: db.DEMO_DEALER_EMAIL,
+    admins: db.listAdmins(),
+    invites: db.listOpenAdminInvites().map((i) => ({ ...i, link: `${baseUrl}/admin/setup/${i.token}` })),
+    adminEmail: req.session.admin_email || null,
+    ownerEmail: process.env.ADMIN_EMAIL || null,
   });
+});
+
+// Create a one-time admin invite link (valid 48h). The link is shown once —
+// send it to the person yourself (text or email).
+router.post('/invites', requireAdmin, (req, res) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+  db.createAdminInvite(token, expiresAt, req.session.admin_email || null);
+  const baseUrl = (process.env.BASE_URL || 'https://www.tradeautox.com').replace(/\/$/, '');
+  res.render('admin-invite-created', { link: `${baseUrl}/admin/setup/${token}`, expiresAt });
+});
+
+// Revoke an unused invite link.
+router.post('/invites/:token/revoke', requireAdmin, (req, res) => {
+  db.revokeAdminInvite(req.params.token);
+  res.redirect('/admin');
+});
+
+// Remove an extra admin login. The owner (env credentials) is never in the
+// table and can't be removed here; nobody can remove their own login.
+router.post('/admins/:id/remove', requireAdmin, (req, res) => {
+  const target = db.getAdminById(req.params.id);
+  if (!target) return res.redirect('/admin');
+  if (target.email === req.session.admin_email) return res.redirect('/admin');
+  db.removeAdmin(target.id);
+  res.redirect('/admin');
 });
 
 router.post('/dealers/:id/approve', requireAdmin, (req, res) => {

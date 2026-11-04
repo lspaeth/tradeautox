@@ -118,6 +118,25 @@ CREATE TABLE IF NOT EXISTS trade_partners (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (dealer_id, partner_id)
 );
+
+-- Extra admin logins. The owner stays on ADMIN_EMAIL/ADMIN_PASSWORD env vars;
+-- these rows are for additional people (added via invite link), each with
+-- their own credentials so access can be granted and revoked individually.
+CREATE TABLE IF NOT EXISTS admins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One-time admin invite links. A link is valid until used or 48h passes.
+CREATE TABLE IF NOT EXISTS admin_invites (
+  token TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_by_email TEXT
+);
 `);
 
 // Best-effort migration for databases created before terms_accepted_at existed.
@@ -413,6 +432,41 @@ const getPasswordReset = (id) =>
 const markPasswordResetUsed = (id) =>
   db.prepare(`UPDATE password_resets SET used_at = datetime('now') WHERE id = ?`).run(id);
 
+// ---- extra admins + one-time invite links ----
+// The owner (ADMIN_EMAIL/ADMIN_PASSWORD env) is not in the admins table and
+// can never be removed here. Table admins are checked at login only when the
+// env credentials don't match.
+const createAdminInvite = (token, expiresAt, createdByEmail) =>
+  db.prepare(`INSERT INTO admin_invites (token, expires_at, created_by_email) VALUES (?, ?, ?)`)
+    .run(token, expiresAt, createdByEmail);
+
+const getAdminInvite = (token) =>
+  db.prepare(`SELECT * FROM admin_invites WHERE token = ?`).get(token);
+
+const markAdminInviteUsed = (token) =>
+  db.prepare(`UPDATE admin_invites SET used_at = datetime('now') WHERE token = ?`).run(token);
+
+const revokeAdminInvite = (token) =>
+  db.prepare(`DELETE FROM admin_invites WHERE token = ?`).run(token);
+
+const listOpenAdminInvites = () =>
+  db.prepare(`SELECT * FROM admin_invites WHERE used_at IS NULL AND expires_at > datetime('now') ORDER BY created_at DESC`).all();
+
+const createAdmin = (email, passwordHash) =>
+  db.prepare(`INSERT INTO admins (email, password_hash) VALUES (?, ?)`).run(email, passwordHash);
+
+const getAdminByEmail = (email) =>
+  db.prepare(`SELECT * FROM admins WHERE email = ?`).get(email);
+
+const getAdminById = (id) =>
+  db.prepare(`SELECT id, email, created_at FROM admins WHERE id = ?`).get(id);
+
+const listAdmins = () =>
+  db.prepare(`SELECT id, email, created_at FROM admins ORDER BY created_at`).all();
+
+const removeAdmin = (id) =>
+  db.prepare(`DELETE FROM admins WHERE id = ?`).run(id);
+
 const setDealerPassword = (id, passwordHash) =>
   db.prepare(`UPDATE dealers SET password_hash = ? WHERE id = ?`).run(passwordHash, id);
 
@@ -553,6 +607,8 @@ module.exports = {
   searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
+  createAdminInvite, getAdminInvite, markAdminInviteUsed, revokeAdminInvite,
+  listOpenAdminInvites, createAdmin, getAdminByEmail, getAdminById, listAdmins, removeAdmin,
   createAuction, addAuctionPhoto, getAuctionPhotos, getAuction, listAuctions,
   getDealerAuctions, getAuctionBids, getHighBid, placeBid, extendAuction,
   setAuctionStatus, acceptAuctionBid, getBidById, listActiveDealers,

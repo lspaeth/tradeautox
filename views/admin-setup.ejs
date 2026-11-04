@@ -1,0 +1,29 @@
+<%- include('partials/header') %>
+
+<h1>Set up your admin login</h1>
+
+<% if (invalid) { %>
+  <p class="alert error">This setup link is invalid, expired, or already used. Ask the person who sent it for a fresh one.</p>
+<% } else { %>
+  <p class="muted">Create your own TradeAutoX admin login. This link works once and expires after 48 hours.</p>
+  <% if (error) { %><p class="alert error"><%= error %></p><% } %>
+  <form class="form" method="post">
+    <label>Email<input type="email" name="email" value="<%= email %>" required autocomplete="email"></label>
+    <label>Password (min 8 characters)
+      <span class="pw-wrap">
+        <input type="password" name="password" required autocomplete="new-password">
+        <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
+      </span>
+    </label>
+    <label>Confirm password
+      <span class="pw-wrap">
+        <input type="password" name="confirm" required autocomplete="new-password">
+        <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
+      </span>
+    </label>
+    <button class="btn" type="submit">Create admin login</button>
+  </form>
+<% } %>
+
+<%- include('partials/password-toggle') %>
+<%- include('partials/footer') %>

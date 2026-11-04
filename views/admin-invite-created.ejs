@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+
+<h1>Admin invite link created</h1>
+
+<p>Send this link to the person you're inviting. It works <strong>once</strong> and expires <strong><%= expiresAt %></strong>.</p>
+
+<p class="temp-password" id="invite-link"><%= link %></p>
+
+<p>
+  <button class="btn btn-sm" type="button" onclick="navigator.clipboard.writeText(document.getElementById('invite-link').textContent.trim()).then(() => { this.textContent = 'Copied ✓'; })">Copy link</button>
+  <a class="btn btn-sm btn-ghost" href="/admin">Back to admin panel</a>
+</p>
+
+<p class="alert warn"><strong>This is the only time the full link is shown.</strong> After you leave this page, open invites still show their links in the admin panel until used or expired.</p>
+
+<%- include('partials/footer') %>
