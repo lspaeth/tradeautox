@@ -36,7 +36,19 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
   let searchType = ['zip', 'id', 'partners'].includes(search_type) ? search_type : 'zip';
   if (searchType === 'partners' && !isDealer) searchType = 'zip';
 
+  // "Trade partners only" toggle: an on/off filter that narrows whatever the
+  // user is currently viewing to listings from their saved trade partners.
+  // Dealer sessions only — admins and logged-out visitors never see it.
+  const partnersOnly = req.query.partners_only === '1' && isDealer;
+  let partnerIds = null;
+  if (isDealer && (partnersOnly || searchType === 'partners')) {
+    partnerIds = db.listTradePartners(viewer.id).map((p) => p.id);
+  }
+
   const baseFilters = { make: (make || '').trim(), maxPrice: max_price || null };
+  // When the toggle is ON, the partner filter applies on top of every search
+  // type (searchListings treats an empty dealerIds list as "match nothing").
+  const partnerFilter = partnersOnly ? { dealerIds: partnerIds } : {};
   let listings;
   let idDealer = null;
   let idLookup = null;
@@ -48,16 +60,15 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
     const d = n ? db.getDealerByMemberNumber(n) : null;
     if (d && d.status === 'approved' && BOARD_ACCESS_STATUSES.includes(d.membership_status)) {
       idDealer = d;
-      listings = db.searchListings({ ...baseFilters, memberNumber: n });
+      listings = db.searchListings({ ...baseFilters, ...partnerFilter, memberNumber: n });
     } else {
       listings = [];
     }
   } else if (searchType === 'partners') {
-    const partners = db.listTradePartners(viewer.id);
-    partnerCount = partners.length;
-    listings = db.searchListings({ ...baseFilters, dealerIds: partners.map((p) => p.id) });
+    partnerCount = partnerIds.length;
+    listings = db.searchListings({ ...baseFilters, dealerIds: partnerIds });
   } else {
-    listings = db.searchListings(baseFilters);
+    listings = db.searchListings({ ...baseFilters, ...partnerFilter });
   }
 
   // Radius filter: distance from the viewer's ZIP (or a typed ZIP) to each seller's ZIP.
@@ -78,11 +89,22 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
         .sort((a, b) => a.distance - b.distance);
     }
   }
-  // Keep make / max_price when switching tabs.
+  // Keep make / max_price / partners_only when switching tabs.
   const keep = [];
   if (make) keep.push('make=' + encodeURIComponent(make));
   if (max_price) keep.push('max_price=' + encodeURIComponent(max_price));
+  if (partnersOnly) keep.push('partners_only=1');
   const keepQS = keep.length ? '&' + keep.join('&') : '';
+  // Toggle link: same view, partners_only flipped. Preserves every filter.
+  const tq = [];
+  if (search_type) tq.push('search_type=' + encodeURIComponent(search_type));
+  if (make) tq.push('make=' + encodeURIComponent(make));
+  if (max_price) tq.push('max_price=' + encodeURIComponent(max_price));
+  if (radius) tq.push('radius=' + encodeURIComponent(radius));
+  if (zip) tq.push('zip=' + encodeURIComponent(zip));
+  if (member_number) tq.push('member_number=' + encodeURIComponent(member_number));
+  if (!partnersOnly) tq.push('partners_only=1');
+  const toggleQS = tq.join('&');
   res.render('listings', {
     listings,
     radiusNoZip,
@@ -90,6 +112,8 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
     searchType,
     isDealer,
     keepQS,
+    toggleQS,
+    partnersOnly,
     idDealer,
     idLookup,
     partnerCount,

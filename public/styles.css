@@ -358,3 +358,9 @@ main.wrap { padding-top: 28px; padding-bottom: 48px; }
   font-weight: 700;
 }
 .impersonate-banner .impersonate-exit:hover { background: #ffd9d4; color: #111; }
+
+/* "Trade partners only" board toggle: sits right of the search-type tabs. */
+.partner-toggle { display: inline-block; padding: 8px 18px; border-radius: 8px; background: transparent; border: 1px solid var(--line); color: #777; text-decoration: none; font-weight: 500; margin-left: auto; }
+.partner-toggle:hover { border-color: #999; color: #333; }
+.partner-toggle.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700; }
+.partner-toggle.on:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }

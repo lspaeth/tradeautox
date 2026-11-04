@@ -10,12 +10,14 @@
   <a class="search-tab<%= searchType === 'zip' ? ' active' : '' %>" href="/listings?search_type=zip<%= keepQS %>">Zip Code</a>
   <a class="search-tab<%= searchType === 'id' ? ' active' : '' %>" href="/listings?search_type=id<%= keepQS %>">ID</a>
   <% if (isDealer) { %><a class="search-tab<%= searchType === 'partners' ? ' active' : '' %>" href="/listings?search_type=partners<%= keepQS %>">Trade Partners</a><% } %>
+  <% if (isDealer) { %><a class="partner-toggle<%= partnersOnly ? ' on' : '' %>" href="/listings?<%= toggleQS %>" title="Show only listings from your trade partners">Trade partners only</a><% } %>
 </div>
 
 <% const showClear = searchType !== 'zip' || filters.make || filters.max_price || filters.radius || filters.zip || filters.member_number; %>
 <% if (searchType === 'id') { %>
   <form class="filters" method="get" action="/listings">
     <input type="hidden" name="search_type" value="id">
+    <% if (partnersOnly) { %><input type="hidden" name="partners_only" value="1"><% } %>
     <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
     <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
     <input name="member_number" placeholder="Dealer ID (e.g. 1001)" inputmode="numeric" value="<%= filters.member_number %>" style="max-width:170px">
@@ -32,6 +34,7 @@
 <% } else if (searchType === 'partners') { %>
   <form class="filters" method="get" action="/listings">
     <input type="hidden" name="search_type" value="partners">
+    <% if (partnersOnly) { %><input type="hidden" name="partners_only" value="1"><% } %>
     <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
     <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
     <button class="btn btn-sm" type="submit">Filter</button>
@@ -40,6 +43,7 @@
   <p class="muted">Showing inventory from your <%= partnerCount %> trade partner<%= partnerCount === 1 ? '' : 's' %>. <a href="/dashboard">Manage trade partners</a></p>
 <% } else { %>
   <form class="filters" method="get" action="/listings">
+    <% if (partnersOnly) { %><input type="hidden" name="partners_only" value="1"><% } %>
     <input name="make" placeholder="Make (e.g. Ford)" value="<%= filters.make %>">
     <input name="max_price" placeholder="Max price" inputmode="numeric" value="<%= filters.max_price %>">
     <select name="radius">
@@ -58,7 +62,11 @@
 <% } %>
 
 <% if (!listings.length) { %>
-  <p class="muted">No listings match.</p>
+  <% if (partnersOnly) { %>
+    <p class="muted">No listings from your trade partners match. <a href="/dashboard">Manage trade partners</a></p>
+  <% } else { %>
+    <p class="muted">No listings match.</p>
+  <% } %>
 <% } else { %>
   <div class="grid">
     <% listings.forEach(l => { %>
