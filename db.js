@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS admins (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- One-time admin invite links. A link is valid until used or 48h passes.
+-- One-time admin invite links. A link is valid until used or 7 days pass.
 CREATE TABLE IF NOT EXISTS admin_invites (
   token TEXT PRIMARY KEY,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

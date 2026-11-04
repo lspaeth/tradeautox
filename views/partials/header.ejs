@@ -20,6 +20,14 @@ if ('serviceWorker' in navigator) {
 </script>
 </head>
 <body>
+<% if (typeof impersonating !== 'undefined' && impersonating) { %>
+<div class="impersonate-banner">
+  <span>👁&nbsp; <strong>Viewing as <%= impersonating.dealership_name %></strong> <span class="impersonate-email">(<%= impersonating.email %>)</span> — admin view-as mode</span>
+  <form method="post" action="/admin/impersonate/exit" style="display:inline;margin:0">
+    <button class="btn btn-xs impersonate-exit" type="submit">Exit view</button>
+  </form>
+</div>
+<% } %>
 <header class="site-header">
   <div class="wrap header-inner">
     <a class="brand" href="/"><img src="/logo.png" alt="TradeAutoX"></a>

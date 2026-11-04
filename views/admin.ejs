@@ -135,7 +135,7 @@
   <% } %>
   <form method="post" action="/admin/invites" style="margin-top:0.75em">
     <button class="btn btn-sm" type="submit">Create invite link</button>
-    <span class="muted small"> — one-time use, expires in 48 hours. Send the link to the person yourself.</span>
+    <span class="muted small"> — one-time use, expires in 7 days. Send the link to the person yourself.</span>
   </form>
 </section>
 
@@ -151,6 +151,9 @@
         <td><span class="pill pill-<%= d.membership_status %>"><%= d.membership_status %></span></td>
         <td class="muted small"><%= d.stripe_customer_id || '—' %></td>
         <td>
+          <form method="post" action="/admin/dealers/<%= d.id %>/impersonate" style="display:inline">
+            <button class="btn btn-xs" type="submit" title="See the site exactly as this dealer sees it">View as</button>
+          </form>
           <% if (d.email !== demoEmail) { %>
             <% if (d.status === 'approved') { %>
               <form method="post" action="/admin/dealers/<%= d.id %>/suspend" style="display:inline">

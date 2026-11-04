@@ -41,6 +41,9 @@ app.use(session({
 app.use((req, res, next) => {
   res.locals.currentDealer = req.session.dealerId ? db.getDealerById(req.session.dealerId) : null;
   res.locals.isAdmin = !!req.session.admin;
+  // Admin "view as dealer" impersonation: the dealer whose eyes we're seeing through.
+  const impId = req.session.impersonatingDealerId;
+  res.locals.impersonating = (impId && req.session.dealerId === impId) ? db.getDealerById(impId) : null;
   res.locals.fmtMoney = (n) => '$' + Number(n || 0).toLocaleString('en-US');
   next();
 });

@@ -42,7 +42,42 @@ router.post('/login', async (req, res) => {
 router.get('/logout', (req, res) => {
   req.session.admin = false;
   req.session.admin_email = null;
+  delete req.session.dealerId;
+  delete req.session.impersonatingDealerId;
+  delete req.session.impersonatingFrom;
   res.redirect('/admin/login');
+});
+
+// ---- view-as-dealer impersonation ----
+// Lets the admin see the site exactly as a dealer sees it (support/debugging).
+// Sets the SAME session key the dealer login sets (session.dealerId) — no
+// parallel auth path. The admin flag stays so "Exit view" can return to /admin.
+// Works for any status (pending/suspended included): it bypasses the login
+// gate but changes nothing about the dealer's actual record.
+router.post('/dealers/:id/impersonate', requireAdmin, (req, res) => {
+  const dealer = db.getDealerById(req.params.id);
+  if (!dealer) return res.status(404).render('404');
+  const adminEmail = req.session.admin_email || 'owner';
+  req.session.impersonatingFrom = adminEmail;
+  req.session.impersonatingDealerId = dealer.id;
+  req.session.dealerId = dealer.id;
+  console.log(`[admin] ${adminEmail} started viewing as dealer ${dealer.id} (${dealer.dealership_name})`);
+  res.redirect('/dashboard');
+});
+
+// Exit view-as mode: drop the dealer session, keep the admin session.
+// No requireAdmin here on purpose — without an active impersonation this is a
+// harmless no-op that just sends the visitor home.
+router.post('/impersonate/exit', (req, res) => {
+  if (req.session.impersonatingDealerId) {
+    const adminEmail = req.session.impersonatingFrom || req.session.admin_email || 'owner';
+    console.log(`[admin] ${adminEmail} stopped viewing as dealer ${req.session.impersonatingDealerId}`);
+    delete req.session.dealerId;
+    delete req.session.impersonatingDealerId;
+    delete req.session.impersonatingFrom;
+    return res.redirect('/admin');
+  }
+  res.redirect('/');
 });
 
 // One-time admin setup link. Public — the invitee isn't logged in yet.
@@ -103,11 +138,11 @@ router.get('/', requireAdmin, (req, res) => {
   });
 });
 
-// Create a one-time admin invite link (valid 48h). The link is shown once —
+// Create a one-time admin invite link (valid 7 days). The link is shown once —
 // send it to the person yourself (text or email).
 router.post('/invites', requireAdmin, (req, res) => {
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   db.createAdminInvite(token, expiresAt, req.session.admin_email || null);
   const baseUrl = (process.env.BASE_URL || 'https://www.tradeautox.com').replace(/\/$/, '');
   res.render('admin-invite-created', { link: `${baseUrl}/admin/setup/${token}`, expiresAt });
