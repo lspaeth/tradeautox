@@ -18,6 +18,7 @@ router.get('/', requireLogin, (req, res) => {
         daysOnSite: daysOnSiteLabel(l.created_at),
         pendingSale: intent ? (PAYMENT_METHODS[intent.method] || intent.method) : null,
         pendingBuyer: intent ? intent.buyer_name : null,
+        pendingDays: intent ? Math.max(0, Math.floor((Date.now() - new Date(intent.created_at + 'Z').getTime()) / 86400000)) : null,
       };
     });
   const notifications = db.listUnreadNotifications(dealer.id);

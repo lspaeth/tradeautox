@@ -47,10 +47,14 @@
     <h2>Sale pending — <%= intent.methodLabel %></h2>
     <p><strong><%= intent.buyer_name %></strong> is buying this vehicle and chose <strong><%= intent.methodLabel %></strong>.</p>
     <p>Buyer contact: <%= intent.buyer_contact %><% if (intent.buyer_phone) { %> — <%= intent.buyer_phone %><% } %> — <%= intent.buyer_email %></p>
+    <p class="muted small">Purchase intent recorded <%= intent.intentDays === 0 ? 'today' : intent.intentDays + (intent.intentDays === 1 ? ' day ago' : ' days ago') %>.</p>
+    <% if (intent.intentDays >= 3) { %>
+      <p class="alert warn"><strong>No word from the buyer in 3 days?</strong> Per our terms (§5), you may cancel this pending sale and put the listing back online.</p>
+    <% } %>
     <p><strong>Pull the car and mark it sold</strong> once the deal closes.</p>
     <div class="cta-row">
       <form method="post" action="/listings/<%= listing.id %>/cancel-intent" style="display:inline">
-        <button class="btn btn-sm btn-ghost" type="submit" onclick="return confirm('Cancel this pending sale? The listing will open back up.')">Cancel pending sale</button>
+        <button class="btn btn-sm btn-ghost" type="submit" onclick="return confirm('Put this listing back online? The buyer will be notified the pending sale was cancelled.')">Put back online</button>
       </form>
     </div>
   </section>

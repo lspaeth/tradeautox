@@ -309,7 +309,9 @@ router.get('/:id', requireMemberOrAdmin, (req, res) => {
   const canManage = !!req.session.admin || req.session.dealerId === listing.dealer_id;
   const rawIntent = db.getPurchaseIntent(listing.id);
   const intent = rawIntent
-    ? { ...rawIntent, methodLabel: PAYMENT_METHODS[rawIntent.method] || rawIntent.method }
+    ? { ...rawIntent,
+        methodLabel: PAYMENT_METHODS[rawIntent.method] || rawIntent.method,
+        intentDays: Math.max(0, Math.floor((Date.now() - new Date(rawIntent.created_at + 'Z').getTime()) / 86400000)) }
     : null;
   const viewerIsBuyer = !!(req.session.dealerId && intent && intent.buyer_dealer_id === req.session.dealerId);
   res.render('listing-detail', {
@@ -348,13 +350,25 @@ router.post('/:id/buy', requireMember, async (req, res) => {
 });
 
 // Seller (or admin) cancels a pending sale — e.g. the buyer never followed
-// through. The listing opens back up; nothing is marked sold.
+// through, or the 3-day buyer-silence rule in §5 applies. The listing opens
+// back up; nothing is marked sold. The buyer gets a notice email.
 router.post('/:id/cancel-intent', (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing) return res.status(404).render('404');
   const isOwner = req.session.dealerId === listing.dealer_id;
   if (!isOwner && !req.session.admin) return res.redirect(`/listings/${listing.id}`);
+  const intent = db.getPurchaseIntent(listing.id);
   db.deletePurchaseIntent(listing.id);
+  if (intent) {
+    const seller = db.getDealerById(listing.dealer_id);
+    const buyer = db.getDealerById(intent.buyer_dealer_id);
+    if (seller && buyer) {
+      const { sendMail, intentCancelledEmail } = require('../lib/mail');
+      const msg = intentCancelledEmail({ seller, buyer, listing });
+      sendMail({ to: buyer.email, ...msg }).catch((err) =>
+        console.error(`[cancel-intent] buyer notice failed:`, err.message));
+    }
+  }
   res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Pending sale cancelled — the listing is open again.'));
 });
 
