@@ -46,7 +46,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
     if (password.length < 8) {
       return res.status(400).render('signup', { error: 'Password must be at least 8 characters.', form_ts: Date.now() });
     }
-    if (db.getDealerByEmail(email.trim().toLowerCase())) {
+    if (db.getDealerByEmail(email.trim().toLowerCase()) || db.getDealerUserByEmail(email.trim().toLowerCase())) {
       return res.status(400).render('signup', { error: 'An account with that email already exists.', form_ts: Date.now() });
     }
     // Driver's-license scan (optional): the browser decoded the DL barcode
@@ -110,21 +110,45 @@ router.get('/login', (req, res) => {
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  const dealer = db.getDealerByEmail((email || '').trim().toLowerCase());
-  if (!dealer || !(await bcrypt.compare(password || '', dealer.password_hash))) {
-    return res.status(401).render('login', { error: 'Invalid email or password.', notice: null });
+  const cleanEmail = (email || '').trim().toLowerCase();
+  // Owner login first — the dealers table is unchanged by employee logins.
+  const dealer = db.getDealerByEmail(cleanEmail);
+  if (dealer && (await bcrypt.compare(password || '', dealer.password_hash))) {
+    if (dealer.status === 'rejected') {
+      return res.status(403).render('login', { error: 'This account was not approved. Contact support.', notice: null });
+    }
+    if (dealer.status === 'suspended') {
+      return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
+    }
+    req.session.dealerId = dealer.id;
+    req.session.dealerRole = 'owner';
+    if (dealer.must_change_password) {
+      return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
+    }
+    return res.redirect('/dashboard');
   }
-  if (dealer.status === 'rejected') {
-    return res.status(403).render('login', { error: 'This account was not approved. Contact support.', notice: null });
+  // Employee login: same dealership, own email + password. Only when the
+  // owner switched employee logins on, and only while the employee is active.
+  const user = db.getDealerUserByEmail(cleanEmail);
+  if (user && user.active && (await bcrypt.compare(password || '', user.password_hash))) {
+    const org = db.getDealerById(user.dealer_id);
+    if (org && org.employee_logins_enabled) {
+      if (org.status === 'rejected') {
+        return res.status(403).render('login', { error: 'This account was not approved. Contact support.', notice: null });
+      }
+      if (org.status === 'suspended') {
+        return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
+      }
+      req.session.dealerId = org.id;
+      req.session.dealerUserId = user.id;
+      req.session.dealerRole = 'user';
+      if (user.must_change_password) {
+        return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
+      }
+      return res.redirect('/dashboard');
+    }
   }
-  if (dealer.status === 'suspended') {
-    return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
-  }
-  req.session.dealerId = dealer.id;
-  if (dealer.must_change_password) {
-    return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
-  }
-  res.redirect('/dashboard');
+  return res.status(401).render('login', { error: 'Invalid email or password.', notice: null });
 });
 
 router.get('/logout', (req, res) => {
@@ -155,17 +179,35 @@ router.post('/forgot-password', (req, res) => {
 
 // ---- change password ----
 router.get('/change-password', requireLogin, (req, res) => {
-  res.render('change-password', { error: null, notice: req.query.notice || null });
+  let mustChange = false;
+  if (req.session.dealerUserId) {
+    const u = db.getDealerUserById(req.session.dealerUserId);
+    mustChange = !!(u && u.must_change_password);
+  } else if (req.session.dealerId) {
+    const d = db.getDealerById(req.session.dealerId);
+    mustChange = !!(d && d.must_change_password);
+  }
+  res.render('change-password', { error: null, notice: req.query.notice || null, mustChange });
 });
 
 router.post('/change-password', requireLogin, async (req, res) => {
-  const dealer = db.getDealerById(req.session.dealerId);
   const { current_password, new_password } = req.body;
-  if (!dealer || !(await bcrypt.compare(current_password || '', dealer.password_hash))) {
-    return res.status(401).render('change-password', { error: 'Current password is incorrect.', notice: null });
-  }
   if (!new_password || new_password.length < 8) {
     return res.status(400).render('change-password', { error: 'New password must be at least 8 characters.', notice: null });
+  }
+  // Employee sessions change the employee's own password, not the org's.
+  if (req.session.dealerUserId) {
+    const user = db.getDealerUserById(req.session.dealerUserId);
+    if (!user || !(await bcrypt.compare(current_password || '', user.password_hash))) {
+      return res.status(401).render('change-password', { error: 'Current password is incorrect.', notice: null });
+    }
+    db.setDealerUserPassword(user.id, await bcrypt.hash(new_password, 12));
+    db.setDealerUserMustChange(user.id, 0);
+    return res.redirect('/dashboard?notice=' + encodeURIComponent('Password updated.'));
+  }
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer || !(await bcrypt.compare(current_password || '', dealer.password_hash))) {
+    return res.status(401).render('change-password', { error: 'Current password is incorrect.', notice: null });
   }
   db.setDealerPassword(dealer.id, await bcrypt.hash(new_password, 12));
   db.setMustChangePassword(dealer.id, 0);

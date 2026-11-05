@@ -340,7 +340,8 @@ router.get('/listings/new', requireAdmin, (req, res) => {
 router.post('/listings', requireAdmin, upload.listingUpload, async (req, res) => {
   try {
     const demo = await db.ensureDemoDealer();
-    const listingId = createListingFromRequest(demo.id, req.body, req.files);
+    // No photo minimum here — the demo vehicle posts exactly as before.
+    const { id: listingId } = createListingFromRequest(demo.id, req.body, req.files);
     res.redirect(`/listings/${listingId}`);
   } catch (err) {
     console.error(err);

@@ -1,0 +1,63 @@
+<%- include('partials/header') %>
+
+<h1>Add photos — <%= listing.year %> <%= listing.make %> <%= listing.model %></h1>
+<% if (listing.status === 'draft') { %>
+  <p class="alert warn">This listing is a <strong>draft</strong> — it's not on the board yet. Add photos until it hits 15 (at least 5 exterior, 5 interior) and it goes live automatically.</p>
+<% } else { %>
+  <p class="muted">Photos so far: <strong><%= counts.total %></strong> (<%= counts.exterior %> exterior, <%= counts.interior %> interior).</p>
+<% } %>
+<% if (listing.status === 'draft') { %>
+  <p>Photos so far: <strong><%= counts.total %> of 15</strong> (<%= counts.exterior %> exterior, <%= counts.interior %> interior).</p>
+<% } %>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<% if (notice) { %><p class="alert ok"><%= notice %></p><% } %>
+
+<form class="form" method="post" action="/listings/<%= listing.id %>/photos" enctype="multipart/form-data">
+  <label>Exterior photos <span class="muted small">(up to 10 — outside shots: front, sides, rear)</span>
+    <input type="file" id="photos-exterior" name="photos_exterior" accept="image/*" capture="environment" multiple>
+  </label>
+  <label>Interior photos <span class="muted small">(up to 10 — inside shots: dash, seats, cargo)</span>
+    <input type="file" id="photos-interior" name="photos_interior" accept="image/*" capture="environment" multiple>
+  </label>
+  <p id="photo-count" class="muted small" aria-live="polite"></p>
+  <button class="btn" type="submit">Add photos</button>
+</form>
+
+<% if (photos.length) { %>
+  <h2>Photos on this listing (<%= photos.length %>)</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <% photos.forEach(p => { %>
+      <img src="<%= p.path %>" alt="" style="width:120px;height:90px;object-fit:cover;border-radius:6px">
+    <% }) %>
+  </div>
+<% } %>
+
+<p><a href="/dashboard">Back to dashboard</a><% if (listing.status !== 'draft') { %> · <a href="/listings/<%= listing.id %>">Back to listing</a><% } %></p>
+
+<script>
+// Live counter, seeded with the photos already on the listing.
+(function () {
+  var have = { total: <%= counts.total %>, exterior: <%= counts.exterior %>, interior: <%= counts.interior %> };
+  var ext = document.getElementById('photos-exterior');
+  var int = document.getElementById('photos-interior');
+  var out = document.getElementById('photo-count');
+  if (!ext || !int || !out) return;
+  function update() {
+    var e = have.exterior + (ext.files ? ext.files.length : 0);
+    var i = have.interior + (int.files ? int.files.length : 0);
+    var total = have.total + (ext.files ? ext.files.length : 0) + (int.files ? int.files.length : 0);
+    var missing = [];
+    if (total < 15) missing.push((15 - total) + ' more to reach 15');
+    if (e < 5) missing.push((5 - e) + ' more exterior');
+    if (i < 5) missing.push((5 - i) + ' more interior');
+    out.textContent = 'After adding: ' + total + ' of 15 photos (' + e + ' exterior, ' + i + ' interior)' +
+      (missing.length ? ' — ' + missing.join(', ') + ' before it goes live.' : ' — enough to go live.');
+  }
+  ext.addEventListener('change', update);
+  int.addEventListener('change', update);
+  update();
+})();
+</script>
+
+<%- include('partials/footer') %>

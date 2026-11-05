@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS dealers (
   license_photo_path TEXT,
   status TEXT NOT NULL DEFAULT 'pending',            -- pending | approved | rejected
   membership_status TEXT NOT NULL DEFAULT 'none',    -- none | active | past_due | inactive
+  employee_logins_enabled INTEGER NOT NULL DEFAULT 0, -- owner toggle: employee logins on/off
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   terms_accepted_at TEXT,                       -- ISO timestamp of Terms acceptance at signup
@@ -34,14 +35,15 @@ CREATE TABLE IF NOT EXISTS listings (
   mileage INTEGER,
   price INTEGER NOT NULL,                            -- whole USD
   description TEXT,
-  status TEXT NOT NULL DEFAULT 'active',             -- active | sold | removed
+  status TEXT NOT NULL DEFAULT 'active',             -- active | draft | sold | removed
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS listing_photos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
+  path TEXT NOT NULL,
+  category TEXT -- 'exterior' | 'interior'; NULL = uncategorized (bulk ZIP photos, pre-rule photos)
 );
 
 -- One row per Buy click: buyer, payment method, when. The listing stays
@@ -88,7 +90,24 @@ CREATE TABLE IF NOT EXISTS auctions (
 CREATE TABLE IF NOT EXISTS auction_photos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
-  path TEXT NOT NULL
+  path TEXT NOT NULL,
+  category TEXT -- 'exterior' | 'interior'; NULL = uncategorized (pre-rule photos)
+);
+
+-- Dealer employee logins. The owner keeps logging in via the dealers table
+-- exactly as before; employees live here, one row per person, and always
+-- act as their dealership (session dealerId is the org). Emails are unique
+-- across dealers + dealer_users so a login can never be ambiguous.
+CREATE TABLE IF NOT EXISTS dealer_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user',           -- 'user' (employees); owners stay in dealers
+  active INTEGER NOT NULL DEFAULT 1,
+  must_change_password INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS auction_bids (
@@ -223,6 +242,24 @@ try {
 }
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dealers_member_number ON dealers(member_number)`);
 
+// Best-effort migrations: dealer employee logins (owner toggle + users table
+// columns) and photo categories (exterior/interior) for the 15–20 photo rule.
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN employee_logins_enabled INTEGER NOT NULL DEFAULT 0`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+try {
+  db.exec(`ALTER TABLE listing_photos ADD COLUMN category TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+try {
+  db.exec(`ALTER TABLE auction_photos ADD COLUMN category TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
@@ -330,17 +367,23 @@ const deleteDealer = (id) => db.prepare(`DELETE FROM dealers WHERE id = ?`).run(
 
 // ---- listings ----
 const createListing = (l) => db.prepare(`
-  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report,
+  INSERT INTO listings (dealer_id, make, model, year, vin, mileage, price, description, verification_report, status,
     trim, body_style, drivetrain, engine, transmission, fuel, doors, color, title_status)
-  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report,
+  VALUES (@dealer_id, @make, @model, @year, @vin, @mileage, @price, @description, @verification_report, @status,
     @trim, @body_style, @drivetrain, @engine, @transmission, @fuel, @doors, @color, @title_status)
-`).run({ color: null, title_status: null, ...l });
+`).run({ color: null, title_status: null, status: 'active', ...l });
 
 const getActiveListingByVin = (dealerId, vin) =>
   db.prepare(`SELECT id FROM listings WHERE dealer_id = ? AND vin = ? AND status = 'active'`).get(dealerId, vin);
 
-const addListingPhoto = (listingId, p) =>
-  db.prepare(`INSERT INTO listing_photos (listing_id, path) VALUES (?, ?)`).run(listingId, p);
+// Any live-or-draft listing with this VIN for this dealer (sold/removed don't
+// count) — the bulk-import duplicate check, so re-importing a draft VIN
+// skips instead of creating a second listing for the same car.
+const getDealerListingByVin = (dealerId, vin) =>
+  db.prepare(`SELECT id FROM listings WHERE dealer_id = ? AND vin = ? AND status IN ('active', 'draft')`).get(dealerId, vin);
+
+const addListingPhoto = (listingId, p, category = null) =>
+  db.prepare(`INSERT INTO listing_photos (listing_id, path, category) VALUES (?, ?, ?)`).run(listingId, p, category || null);
 
 const getListing = (id) =>
   db.prepare(`
@@ -351,6 +394,18 @@ const getListing = (id) =>
 
 const getListingPhotos = (listingId) =>
   db.prepare(`SELECT * FROM listing_photos WHERE listing_id = ? ORDER BY id`).all(listingId);
+
+// Photo totals for the 15–20 rule: uncategorized photos (bulk ZIP, pre-rule)
+// count toward the total only, never toward either side's minimum.
+const getListingPhotoCounts = (listingId) => {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN category = 'exterior' THEN 1 ELSE 0 END), 0) AS exterior,
+      COALESCE(SUM(CASE WHEN category = 'interior' THEN 1 ELSE 0 END), 0) AS interior
+    FROM listing_photos WHERE listing_id = ?
+  `).get(listingId);
+  return { total: row.total, exterior: row.exterior, interior: row.interior };
+};
 
 function searchListings({ make, maxPrice, memberNumber, dealerIds }) {
   // A partner filter with no partners matches nothing (avoids `IN ()`).
@@ -473,6 +528,36 @@ const setDealerPassword = (id, passwordHash) =>
 const setMustChangePassword = (id, val) =>
   db.prepare(`UPDATE dealers SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
 
+// ---- dealer employee logins ----
+// The owner keeps logging in via the dealers table; employees live here.
+// Email uniqueness is enforced across BOTH tables by the callers (login and
+// signup/add-employee check dealers + dealer_users) — SQLite can't express
+// a cross-table UNIQUE constraint.
+const setEmployeeLoginsEnabled = (dealerId, val) =>
+  db.prepare(`UPDATE dealers SET employee_logins_enabled = ? WHERE id = ?`).run(val ? 1 : 0, dealerId);
+
+const createDealerUser = ({ dealer_id, name, email, password_hash }) =>
+  db.prepare(`INSERT INTO dealer_users (dealer_id, name, email, password_hash) VALUES (?, ?, ?, ?)`)
+    .run(dealer_id, name, email, password_hash);
+
+const getDealerUserByEmail = (email) =>
+  db.prepare(`SELECT * FROM dealer_users WHERE email = ?`).get(email);
+
+const getDealerUserById = (id) =>
+  db.prepare(`SELECT * FROM dealer_users WHERE id = ?`).get(id);
+
+const listDealerUsers = (dealerId) =>
+  db.prepare(`SELECT id, dealer_id, name, email, role, active, must_change_password, created_at FROM dealer_users WHERE dealer_id = ? ORDER BY created_at`).all(dealerId);
+
+const setDealerUserActive = (id, dealerId, val) =>
+  db.prepare(`UPDATE dealer_users SET active = ? WHERE id = ? AND dealer_id = ?`).run(val ? 1 : 0, id, dealerId);
+
+const setDealerUserPassword = (id, passwordHash) =>
+  db.prepare(`UPDATE dealer_users SET password_hash = ? WHERE id = ?`).run(passwordHash, id);
+
+const setDealerUserMustChange = (id, val) =>
+  db.prepare(`UPDATE dealer_users SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
+
 // ---- live auctions ----
 const createAuction = (a) => db.prepare(`
   INSERT INTO auctions (dealer_id, make, model, year, vin, mileage, trim, body_style, drivetrain,
@@ -481,11 +566,22 @@ const createAuction = (a) => db.prepare(`
     @engine, @transmission, @fuel, @doors, @description, @target_price, @radius, @ends_at, 'live', @created_at)
 `).run(a);
 
-const addAuctionPhoto = (auctionId, p) =>
-  db.prepare(`INSERT INTO auction_photos (auction_id, path) VALUES (?, ?)`).run(auctionId, p);
+const addAuctionPhoto = (auctionId, p, category = null) =>
+  db.prepare(`INSERT INTO auction_photos (auction_id, path, category) VALUES (?, ?, ?)`).run(auctionId, p, category || null);
 
 const getAuctionPhotos = (auctionId) =>
   db.prepare(`SELECT * FROM auction_photos WHERE auction_id = ? ORDER BY id`).all(auctionId);
+
+// Same 15–20 rule totals as listings (see getListingPhotoCounts).
+const getAuctionPhotoCounts = (auctionId) => {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN category = 'exterior' THEN 1 ELSE 0 END), 0) AS exterior,
+      COALESCE(SUM(CASE WHEN category = 'interior' THEN 1 ELSE 0 END), 0) AS interior
+    FROM auction_photos WHERE auction_id = ?
+  `).get(auctionId);
+  return { total: row.total, exterior: row.exterior, interior: row.interior };
+};
 
 // Effective status: a 'live' auction past its end time reads as 'ended'.
 function withEffectiveStatus(a) {
@@ -603,12 +699,15 @@ module.exports = {
   assignMemberNumber, getDealerByMemberNumber, backfillMemberNumbers,
   addTradePartner, removeTradePartner, listTradePartners,
   createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
-  createListing, getActiveListingByVin, addListingPhoto, getListing, getListingPhotos,
+  createListing, getActiveListingByVin, getDealerListingByVin, addListingPhoto, getListing, getListingPhotos,
+  getListingPhotoCounts, getAuctionPhotoCounts,
   searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,
   getPasswordReset, markPasswordResetUsed,
   createAdminInvite, getAdminInvite, markAdminInviteUsed, revokeAdminInvite,
   listOpenAdminInvites, createAdmin, getAdminByEmail, getAdminById, listAdmins, removeAdmin,
+  setEmployeeLoginsEnabled, createDealerUser, getDealerUserByEmail, getDealerUserById,
+  listDealerUsers, setDealerUserActive, setDealerUserPassword, setDealerUserMustChange,
   createAuction, addAuctionPhoto, getAuctionPhotos, getAuction, listAuctions,
   getDealerAuctions, getAuctionBids, getHighBid, placeBid, extendAuction,
   setAuctionStatus, acceptAuctionBid, getBidById, listActiveDealers,

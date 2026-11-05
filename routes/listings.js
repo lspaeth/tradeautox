@@ -6,7 +6,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireMember, requireMemberOrAdmin } = require('../lib/auth');
-const { createListingFromRequest, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
+const { createListingFromRequest, collectPhotos, publishDraftIfReady, photoMinimumMessage, MIN_PHOTOS, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
 
@@ -129,7 +129,7 @@ router.get('/new', requireMember, (req, res) => {
 // ---- Bulk import (fleet sellers: CSV of vehicles + ZIP of photos) ----
 
 const BULK_MAX_ROWS = 200;
-const BULK_MAX_PHOTOS_PER_CAR = 8; // matches the single-listing photo cap
+const BULK_MAX_PHOTOS_PER_CAR = 20; // matches the single-listing photo cap
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 
 const SAMPLE_CSV = [
@@ -183,7 +183,7 @@ function saveBulkPhoto(photo) {
 router.post('/bulk', requireMember, (req, res) => {
   upload.bulkUpload(req, res, async (uploadErr) => {
     const render = (error, report) => res.render('bulk-import', { error, report });
-    if (uploadErr) return res.status(400).render('bulk-import', { error: uploadErr.message || 'Upload failed.', report: null });
+    if (uploadErr) return res.status(400).render('bulk-import', { error: upload.friendlyUploadError(uploadErr), report: null });
     try {
       const csvFile = req.files && req.files.csv_file && req.files.csv_file[0];
       if (!csvFile) return render('Please choose the CSV file of vehicles to import.', null);
@@ -222,8 +222,8 @@ router.post('/bulk', requireMember, (req, res) => {
           report.errors.push({ row: rowLabel, vin, message: 'Missing or invalid price — every listing needs an asking price. Listing not created.' });
           continue;
         }
-        if (db.getActiveListingByVin(req.dealer.id, vin)) {
-          report.skipped.push({ row: rowLabel, vin, message: 'Skipped — you already have an active listing with this VIN.' });
+        if (db.getDealerListingByVin(req.dealer.id, vin)) {
+          report.skipped.push({ row: rowLabel, vin, message: 'Skipped — you already have a live or draft listing with this VIN.' });
           continue;
         }
         const decoded = await decodeVin(vin);
@@ -235,7 +235,7 @@ router.post('/bulk', requireMember, (req, res) => {
         const matched = (photosByVin.get(vin) || []).slice(0, BULK_MAX_PHOTOS_PER_CAR);
         try {
           const savedPhotos = matched.map(saveBulkPhoto);
-          const listingId = createListingFromRequest(req.dealer.id, {
+          const created = createListingFromRequest(req.dealer.id, {
             vin,
             make: spec.make,
             model: spec.model,
@@ -252,12 +252,13 @@ router.post('/bulk', requireMember, (req, res) => {
             color: (row.color || '').trim(),
             title_status: (row.title_status || '').trim(),
             description: (row.description || '').trim(),
-          }, { photos: savedPhotos });
+          }, { photos: savedPhotos }, { enforcePhotoMinimum: 'total' });
           report.created.push({
-            row: rowLabel, vin, id: listingId,
+            row: rowLabel, vin, id: created.id,
             label: `${spec.year} ${spec.make} ${spec.model}${spec.trim ? ' ' + spec.trim : ''}`,
             photoCount: savedPhotos.length,
             noPhotos: savedPhotos.length === 0,
+            draft: created.status === 'draft',
           });
         } catch (err) {
           console.error(err);
@@ -275,7 +276,11 @@ router.post('/bulk', requireMember, (req, res) => {
         }
       }
       if (!zipFile && report.created.length) {
-        report.notes.push('No photo ZIP was uploaded, so the listings above were created without photos. You can add photos later from each listing if you like.');
+        report.notes.push('No photo ZIP was uploaded, so the listings above were saved as drafts — add at least 15 photos (5 exterior, 5 interior) from your dashboard to put them on the board.');
+      }
+      if (report.created.some((c) => c.draft)) {
+        const n = report.created.filter((c) => c.draft).length;
+        report.notes.push(`${n} listing${n === 1 ? '' : 's'} saved as draft${n === 1 ? '' : 's'} — fewer than 15 photos matched. Add photos from your dashboard to publish ${n === 1 ? 'it' : 'them'}.`);
       }
 
       return render(null, report);
@@ -286,18 +291,68 @@ router.post('/bulk', requireMember, (req, res) => {
   });
 });
 
-// Create listing (up to 8 photos + optional verification report)
-router.post('/', requireMember, upload.listingUpload, (req, res) => {
-  try {
-    const listingId = createListingFromRequest(req.dealer.id, req.body, req.files);
-    res.redirect(`/listings/${listingId}`);
-  } catch (err) {
-    console.error(err);
-    res.status(400).render('listing-new', {
-      error: err.message || 'Something went wrong saving your listing.',
-      formAction: '/listings', heading: 'Sell a vehicle', isAdmin: false,
+// Create listing — 15–20 photos (at least 5 exterior + 5 interior) to go
+// live. Short of that, the listing still saves — as a draft, off the board
+// — and the dealer lands on the add-photos page to finish it.
+router.post('/', requireMember, (req, res) => {
+  upload.listingUpload(req, res, (uploadErr) => {
+    const renderForm = (msg) => res.status(400).render('listing-new', {
+      error: msg, formAction: '/listings', heading: 'Sell a vehicle', isAdmin: false,
     });
-  }
+    if (uploadErr) return renderForm(upload.friendlyUploadError(uploadErr));
+    try {
+      const created = createListingFromRequest(req.dealer.id, req.body, req.files, { enforcePhotoMinimum: 'split' });
+      if (created.status === 'draft') {
+        return res.redirect(`/listings/${created.id}/add-photos?notice=` + encodeURIComponent(photoMinimumMessage(created.photoCounts)));
+      }
+      res.redirect(`/listings/${created.id}`);
+    } catch (err) {
+      console.error(err);
+      renderForm(err.message || 'Something went wrong saving your listing.');
+    }
+  });
+});
+
+// Add photos to a listing — finish a draft, or top up a live one.
+// A draft goes live the moment it holds 15+ photos (5+ exterior, 5+ interior).
+router.get('/:id/add-photos', requireMember, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  const counts = db.getListingPhotoCounts(listing.id);
+  res.render('listing-add-photos', {
+    listing, photos: db.getListingPhotos(listing.id), counts,
+    error: null, notice: req.query.notice || null,
+  });
+});
+
+router.post('/:id/photos', requireMember, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  upload.addPhotosUpload(req, res, (uploadErr) => {
+    const counts = () => db.getListingPhotoCounts(listing.id);
+    const renderPage = (msg, notice) => res.status(uploadErr ? 400 : 200).render('listing-add-photos', {
+      listing, photos: db.getListingPhotos(listing.id), counts: counts(),
+      error: msg || null, notice: notice || null,
+    });
+    if (uploadErr) return renderPage(upload.friendlyUploadError(uploadErr));
+    try {
+      const added = collectPhotos(req.files);
+      if (!added.length) return renderPage('Choose at least one photo to add.');
+      for (const p of added) db.addListingPhoto(listing.id, `/uploads/${p.filename}`, p.category);
+      const now = counts();
+      if (listing.status === 'draft') {
+        if (publishDraftIfReady(listing.id)) {
+          return res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Published — your listing is now live on the board.'));
+        }
+        return res.redirect(`/listings/${listing.id}/add-photos?notice=` + encodeURIComponent(
+          `${photoMinimumMessage(now)} Right now: ${now.total} of ${MIN_PHOTOS} photos (${now.exterior} exterior, ${now.interior} interior).`));
+      }
+      return res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent(`${added.length} photo${added.length === 1 ? '' : 's'} added.`));
+    } catch (err) {
+      console.error(err);
+      renderPage('Something went wrong adding those photos.');
+    }
+  });
 });
 
 // Listing detail — members and admin

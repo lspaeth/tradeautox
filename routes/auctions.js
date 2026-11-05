@@ -48,68 +48,80 @@ router.get('/new', requireMember, (req, res) => {
 });
 
 // ---- create ----
-router.post('/', requireMember, upload.auctionUpload, async (req, res) => {
-  const renderErr = (msg) => res.status(400).render('auction-new', {
-    error: msg,
-    radiusOptions: RADIUS_OPTIONS,
-    durationOptions: DURATION_OPTIONS,
-    dealerZip: req.dealer.zip || '',
-  });
-  try {
-    const seller = req.dealer;
-    if (!isValidZip(seller.zip)) {
-      return renderErr('Set your dealership ZIP code on your dashboard first — live auction alerts are sent by distance from your ZIP.');
-    }
-    const { make, model, year, vin, mileage, description, target_price } = req.body;
-    if (!cleanStr(make) || !cleanStr(model) || !cleanStr(year)) {
-      return renderErr('Make, model, and year are required.');
-    }
-    const yearNum = parseInt(year, 10);
-    if (!yearNum || yearNum < 1900 || yearNum > 2100) return renderErr('Please enter a valid year.');
-    const radius = RADIUS_OPTIONS.includes(Number(req.body.radius)) ? Number(req.body.radius) : 50;
-    const duration = DURATION_OPTIONS.includes(Number(req.body.duration)) ? Number(req.body.duration) : 30;
-    const target = target_price ? parseInt(String(target_price).replace(/[^0-9]/g, ''), 10) || null : null;
-    const spec = {};
-    for (const f of SPEC_FIELDS) spec[f] = cleanStr(req.body[f]) || null;
-
-    const now = Date.now();
-    const info = db.createAuction({
-      dealer_id: seller.id,
-      make: cleanStr(make),
-      model: cleanStr(model),
-      year: yearNum,
-      vin: cleanStr(vin).toUpperCase() || null,
-      mileage: mileage ? parseInt(String(mileage).replace(/[^0-9]/g, ''), 10) || null : null,
-      description: cleanStr(description) || null,
-      target_price: target,
-      radius,
-      ends_at: new Date(now + duration * 60 * 1000).toISOString(),
-      created_at: new Date(now).toISOString(),
-      ...spec,
+// 15–20 photos (at least 5 exterior + 5 interior) to go live — same rule as
+// listings. Short of that the auction doesn't start; the seller adds photos
+// and resubmits. Nothing here touches bidding, the clock, or anti-snipe.
+router.post('/', requireMember, (req, res) => {
+  upload.auctionUpload(req, res, async (uploadErr) => {
+    const renderErr = (msg) => res.status(400).render('auction-new', {
+      error: msg,
+      radiusOptions: RADIUS_OPTIONS,
+      durationOptions: DURATION_OPTIONS,
+      dealerZip: req.dealer.zip || '',
     });
-    const auctionId = info.lastInsertRowid;
-    for (const f of (req.files && req.files.photos) || []) {
-      db.addAuctionPhoto(auctionId, `/uploads/${f.filename}`);
-    }
+    if (uploadErr) return renderErr(upload.friendlyUploadError(uploadErr));
+    try {
+      const seller = req.dealer;
+      if (!isValidZip(seller.zip)) {
+        return renderErr('Set your dealership ZIP code on your dashboard first — live auction alerts are sent by distance from your ZIP.');
+      }
+      const { make, model, year, vin, mileage, description, target_price } = req.body;
+      if (!cleanStr(make) || !cleanStr(model) || !cleanStr(year)) {
+        return renderErr('Make, model, and year are required.');
+      }
+      const yearNum = parseInt(year, 10);
+      if (!yearNum || yearNum < 1900 || yearNum > 2100) return renderErr('Please enter a valid year.');
+      const { collectPhotos, countPhotos, meetsSplitMinimum, photoShortfall } = require('../lib/listings');
+      const photos = collectPhotos(req.files);
+      const photoCounts = countPhotos(photos);
+      if (!meetsSplitMinimum(photoCounts)) {
+        return renderErr(`To go live, this auction needs ${photoShortfall(photoCounts).join(', ')} — add the photos and try again. Right now: ${photoCounts.total} photos (${photoCounts.exterior} exterior, ${photoCounts.interior} interior).`);
+      }
+      const radius = RADIUS_OPTIONS.includes(Number(req.body.radius)) ? Number(req.body.radius) : 50;
+      const duration = DURATION_OPTIONS.includes(Number(req.body.duration)) ? Number(req.body.duration) : 30;
+      const target = target_price ? parseInt(String(target_price).replace(/[^0-9]/g, ''), 10) || null : null;
+      const spec = {};
+      for (const f of SPEC_FIELDS) spec[f] = cleanStr(req.body[f]) || null;
 
-    // Alert every active dealer inside the radius (in-app + email, fire-and-forget).
-    const auction = db.getAuction(auctionId);
-    const label = vehicleLabel(auction);
-    for (const other of db.listActiveDealers()) {
-      if (other.id === seller.id || !other.zip) continue;
-      const dist = distanceMiles(seller.zip, other.zip);
-      if (dist == null || dist > radius) continue;
-      db.createNotification(other.id, 'auction_alert', auctionId,
-        `Live auction ${dist} mi away: ${label} — bidding ends ${new Date(auction.ends_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`);
-      sendMail({ to: other.email, ...auctionAlertEmail(other, auction, dist) })
-        .catch((e) => console.error('[mail] auction alert failed:', e.message));
-    }
+      const now = Date.now();
+      const info = db.createAuction({
+        dealer_id: seller.id,
+        make: cleanStr(make),
+        model: cleanStr(model),
+        year: yearNum,
+        vin: cleanStr(vin).toUpperCase() || null,
+        mileage: mileage ? parseInt(String(mileage).replace(/[^0-9]/g, ''), 10) || null : null,
+        description: cleanStr(description) || null,
+        target_price: target,
+        radius,
+        ends_at: new Date(now + duration * 60 * 1000).toISOString(),
+        created_at: new Date(now).toISOString(),
+        ...spec,
+      });
+      const auctionId = info.lastInsertRowid;
+      for (const p of photos) {
+        db.addAuctionPhoto(auctionId, `/uploads/${p.filename}`, p.category);
+      }
 
-    res.redirect(`/auctions/${auctionId}`);
-  } catch (err) {
-    console.error(err);
-    renderErr('Something went wrong starting your auction.');
-  }
+      // Alert every active dealer inside the radius (in-app + email, fire-and-forget).
+      const auction = db.getAuction(auctionId);
+      const label = vehicleLabel(auction);
+      for (const other of db.listActiveDealers()) {
+        if (other.id === seller.id || !other.zip) continue;
+        const dist = distanceMiles(seller.zip, other.zip);
+        if (dist == null || dist > radius) continue;
+        db.createNotification(other.id, 'auction_alert', auctionId,
+          `Live auction ${dist} mi away: ${label} — bidding ends ${new Date(auction.ends_at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })} ET`);
+        sendMail({ to: other.email, ...auctionAlertEmail(other, auction, dist) })
+          .catch((e) => console.error('[mail] auction alert failed:', e.message));
+      }
+
+      res.redirect(`/auctions/${auctionId}`);
+    } catch (err) {
+      console.error(err);
+      renderErr('Something went wrong starting your auction.');
+    }
+  });
 });
 
 // ---- room ----

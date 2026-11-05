@@ -51,12 +51,40 @@
   <label>Condition notes
     <textarea name="description" rows="4" placeholder="Condition, options, history, title status — what bidders need to know…"></textarea>
   </label>
-  <label>Photos <span class="muted small">(up to 8 images — on your phone, tap to use the camera)</span>
-    <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+  <label>Exterior photos <span class="muted small">(up to 10 — outside shots: front, sides, rear)</span>
+    <input type="file" id="photos-exterior" name="photos_exterior" accept="image/*" capture="environment" multiple>
   </label>
+  <label>Interior photos <span class="muted small">(up to 10 — inside shots: dash, seats, cargo)</span>
+    <input type="file" id="photos-interior" name="photos_interior" accept="image/*" capture="environment" multiple>
+  </label>
+  <p id="photo-count" class="muted small" aria-live="polite">0 of 15 photos — at least 5 exterior and 5 interior to go live (20 max).</p>
   <p class="muted small">A bid in the final 2 minutes extends the clock by 2 minutes. You can accept the high bid at any time — the sale then happens directly between you and the winning dealer, as-is.</p>
   <button class="btn" type="submit">Go live</button>
 </form>
+
+<script>
+// Live photo counter: 15 to go live, at least 5 exterior + 5 interior.
+(function () {
+  var ext = document.getElementById('photos-exterior');
+  var int = document.getElementById('photos-interior');
+  var out = document.getElementById('photo-count');
+  if (!ext || !int || !out) return;
+  function update() {
+    var e = ext.files ? ext.files.length : 0;
+    var i = int.files ? int.files.length : 0;
+    var total = e + i;
+    var missing = [];
+    if (total < 15) missing.push((15 - total) + ' more to reach 15');
+    if (e < 5) missing.push((5 - e) + ' more exterior');
+    if (i < 5) missing.push((5 - i) + ' more interior');
+    out.textContent = total + ' of 15 photos (' + e + ' exterior, ' + i + ' interior)' +
+      (missing.length ? ' — ' + missing.join(', ') + '.' : ' — ready to go live.') +
+      ' 20 max.';
+  }
+  ext.addEventListener('change', update);
+  int.addEventListener('change', update);
+})();
+</script>
 
 <script>
 (function () {

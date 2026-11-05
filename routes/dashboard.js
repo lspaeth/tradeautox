@@ -1,6 +1,7 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db');
-const { requireLogin, BOARD_ACCESS_STATUSES } = require('../lib/auth');
+const { requireLogin, requireOwner, isOwnerSession, currentDealerUser, BOARD_ACCESS_STATUSES } = require('../lib/auth');
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
 const { daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
@@ -10,11 +11,13 @@ const router = express.Router();
 router.get('/', requireLogin, (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer) { req.session.destroy(() => res.redirect('/login')); return; }
+  const employeeUser = currentDealerUser(req);
   const listings = db.getDealerListings(dealer.id)
     .map((l) => {
       const intent = l.status === 'active' ? db.getPurchaseIntent(l.id) : null;
       return {
         ...l,
+        photoCounts: db.getListingPhotoCounts(l.id),
         daysOnSite: daysOnSiteLabel(l.created_at),
         pendingSale: intent ? (PAYMENT_METHODS[intent.method] || intent.method) : null,
         pendingBuyer: intent ? intent.buyer_name : null,
@@ -35,6 +38,10 @@ router.get('/', requireLogin, (req, res) => {
     myAuctions,
     liveNearMe,
     tradePartners: db.listTradePartners(dealer.id),
+    isOwner: isOwnerSession(req),
+    employeeUser,
+    mustChangePassword: employeeUser ? !!employeeUser.must_change_password : !!dealer.must_change_password,
+    employees: isOwnerSession(req) ? db.listDealerUsers(dealer.id) : [],
     notice: req.query.notice || null,
     error: req.query.error || null,
     stripeConfigured: stripeConfigured() && !!process.env.STRIPE_PRICE_ID,
@@ -43,7 +50,7 @@ router.get('/', requireLogin, (req, res) => {
   if (notifications.length) db.markNotificationsRead(dealer.id);
 });
 
-router.post('/zip', requireLogin, (req, res) => {
+router.post('/zip', requireOwner, (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer) return res.redirect('/login');
   if (!isValidZip(req.body.zip)) {
@@ -56,6 +63,52 @@ router.post('/zip', requireLogin, (req, res) => {
     state: (req.body.state || '').trim(),
   });
   res.redirect('/dashboard?notice=' + encodeURIComponent('Dealership address saved.'));
+});
+
+// ---- Employee logins (owner only) ----
+// Toggle: off = the dealership is owner-only, exactly as before; on = the
+// Employees section below opens up and employee logins work.
+router.post('/employee-logins', requireOwner, (req, res) => {
+  const on = req.body.enabled === '1';
+  db.setEmployeeLoginsEnabled(req.session.dealerId, on);
+  res.redirect('/dashboard?notice=' + encodeURIComponent(
+    on ? 'Employee logins are on — add people below and they can sign in with their own email.'
+       : 'Employee logins are off — only the owner login works now.'));
+});
+
+// Add an employee: name + email + temporary password. First login forces a
+// password change. Email must be unique across all dealers and employees.
+router.post('/employees', requireOwner, (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer) return res.redirect('/login');
+  const fail = (msg) => res.redirect('/dashboard?error=' + encodeURIComponent(msg));
+  if (!dealer.employee_logins_enabled) return fail('Switch employee logins on first.');
+  const name = (req.body.name || '').trim();
+  const email = (req.body.email || '').trim().toLowerCase();
+  const tempPassword = req.body.temp_password || '';
+  if (!name || !email || !/.+@.+\..+/.test(email)) return fail('Enter the employee\u2019s name and a valid email address.');
+  if (tempPassword.length < 8) return fail('Temporary password must be at least 8 characters.');
+  if (db.getDealerByEmail(email) || db.getDealerUserByEmail(email)) {
+    return fail('That email already has an account — every login needs its own email.');
+  }
+  db.createDealerUser({
+    dealer_id: dealer.id,
+    name,
+    email,
+    password_hash: bcrypt.hashSync(tempPassword, 12),
+  });
+  res.redirect('/dashboard?notice=' + encodeURIComponent(
+    `${name} can now sign in with ${email} and the temporary password — they\u2019ll set their own password on first login.`));
+});
+
+// Deactivate / reactivate one employee. Deactivated employees can't log in;
+// their past activity stays under the dealership.
+router.post('/employees/:id/toggle', requireOwner, (req, res) => {
+  const user = db.getDealerUserById(req.params.id);
+  if (!user || user.dealer_id !== req.session.dealerId) return res.redirect('/dashboard');
+  db.setDealerUserActive(user.id, user.dealer_id, user.active ? 0 : 1);
+  res.redirect('/dashboard?notice=' + encodeURIComponent(
+    user.active ? `${user.name} can no longer sign in.` : `${user.name} can sign in again.`));
 });
 
 // Trade partners (one-sided follow, v1): add a dealer by member ID.

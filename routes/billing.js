@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { requireLogin } = require('../lib/auth');
+const { requireOwner } = require('../lib/auth');
 const { getStripe, stripeConfigured, baseUrl } = require('../lib/stripe');
 const { sendMail, paymentProblemEmail } = require('../lib/mail');
 
@@ -16,8 +16,8 @@ function billingReady(res) {
   return true;
 }
 
-// Start subscription checkout — approved dealers only
-router.post('/checkout', requireLogin, async (req, res) => {
+// Start subscription checkout — approved dealers only, owner only
+router.post('/checkout', requireOwner, async (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer || dealer.status !== 'approved') return res.redirect('/dashboard');
   if (!billingReady(res)) return;
@@ -54,7 +54,7 @@ router.post('/checkout', requireLogin, async (req, res) => {
 });
 
 // Success page — includes a fallback activation in case the webhook hasn't fired yet
-router.get('/success', requireLogin, async (req, res) => {
+router.get('/success', requireOwner, async (req, res) => {
   let dealer = db.getDealerById(req.session.dealerId);
   if (req.query.session_id && stripeConfigured()) {
     try {
@@ -72,12 +72,12 @@ router.get('/success', requireLogin, async (req, res) => {
   res.render('billing-success', { dealer });
 });
 
-router.get('/cancel', requireLogin, (req, res) => {
+router.get('/cancel', requireOwner, (req, res) => {
   res.render('billing-cancel');
 });
 
 // Customer portal — dealers manage/cancel their own subscription
-router.post('/portal', requireLogin, async (req, res) => {
+router.post('/portal', requireOwner, async (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer || !dealer.stripe_customer_id) return res.redirect('/dashboard');
   if (!billingReady(res)) return;
