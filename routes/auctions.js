@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const upload = require('../lib/upload');
-const { requireMember, requireMemberOrAdmin, currentDealer } = require('../lib/auth');
+const { requireMember, requireMemberOrAdmin, requireSell, requireBuy, currentDealer } = require('../lib/auth');
 const { distanceMiles, isValidZip } = require('../lib/geo');
 const { sendMail, auctionAlertEmail, auctionWonEmail, auctionSoldEmail } = require('../lib/mail');
 const { SPEC_FIELDS } = require('../lib/listings');
@@ -38,7 +38,7 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
 });
 
 // ---- create form ----
-router.get('/new', requireMember, (req, res) => {
+router.get('/new', requireMember, requireSell, (req, res) => {
   res.render('auction-new', {
     error: null,
     radiusOptions: RADIUS_OPTIONS,
@@ -51,7 +51,7 @@ router.get('/new', requireMember, (req, res) => {
 // 15–20 photos (at least 5 exterior + 5 interior) to go live — same rule as
 // listings. Short of that the auction doesn't start; the seller adds photos
 // and resubmits. Nothing here touches bidding, the clock, or anti-snipe.
-router.post('/', requireMember, (req, res) => {
+router.post('/', requireMember, requireSell, (req, res) => {
   upload.auctionUpload(req, res, async (uploadErr) => {
     const renderErr = (msg) => res.status(400).render('auction-new', {
       error: msg,
@@ -175,7 +175,7 @@ router.get('/:id/state', requireMemberOrAdmin, (req, res) => {
 });
 
 // ---- bid ----
-router.post('/:id/bid', requireMember, (req, res) => {
+router.post('/:id/bid', requireMember, requireBuy, (req, res) => {
   const auction = db.getAuction(req.params.id);
   if (!auction) return res.status(404).render('404');
   const back = (params) => res.redirect(`/auctions/${auction.id}?${params}`);
@@ -205,7 +205,7 @@ router.post('/:id/bid', requireMember, (req, res) => {
 });
 
 // ---- accept high bid (seller) ----
-router.post('/:id/accept', requireMember, async (req, res) => {
+router.post('/:id/accept', requireMember, requireSell, async (req, res) => {
   const auction = db.getAuction(req.params.id);
   if (!auction) return res.status(404).render('404');
   if (auction.dealer_id !== req.dealer.id) return res.redirect(`/auctions/${auction.id}`);
@@ -230,7 +230,7 @@ router.post('/:id/accept', requireMember, async (req, res) => {
 });
 
 // ---- cancel (seller, while live) ----
-router.post('/:id/cancel', requireMember, (req, res) => {
+router.post('/:id/cancel', requireMember, requireSell, (req, res) => {
   const auction = db.getAuction(req.params.id);
   if (!auction) return res.status(404).render('404');
   if (auction.dealer_id === req.dealer.id && auction.status === 'live') {

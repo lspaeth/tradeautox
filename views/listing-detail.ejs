@@ -52,11 +52,13 @@
       <p class="alert warn"><strong>No word from the buyer in 3 days?</strong> Per our terms (§5), you may cancel this pending sale and put the listing back online.</p>
     <% } %>
     <p><strong>Pull the car and mark it sold</strong> once the deal closes.</p>
+    <% if (typeof canSell === 'undefined' || canSell) { %>
     <div class="cta-row">
       <form method="post" action="/listings/<%= listing.id %>/cancel-intent" style="display:inline">
         <button class="btn btn-sm btn-ghost" type="submit" onclick="return confirm('Put this listing back online? The buyer will be notified the pending sale was cancelled.')">Put back online</button>
       </form>
     </div>
+    <% } %>
   </section>
 <% } else if (intent && viewerIsBuyer) { %>
   <section class="panel">
@@ -65,7 +67,7 @@
   </section>
 <% } else if (intent) { %>
   <p class="alert warn"><strong>Sale pending</strong> — this vehicle already has a buyer.</p>
-<% } else if (currentDealer && !canManage) { %>
+<% } else if (currentDealer && !canManage && (typeof canBuy === 'undefined' || canBuy)) { %>
   <section class="panel">
     <h2>Buy this vehicle</h2>
     <p class="muted small">No money moves through TradeAutoX. Pick how you'll pay, and a printable deal sheet goes to you and the seller.</p>
@@ -83,7 +85,7 @@
   </section>
 <% } %>
 
-<% if (canManage) { %>
+<% if (canManage && (typeof canSell === 'undefined' || canSell)) { %>
   <section class="panel">
     <h2>Manage this listing</h2>
     <div class="cta-row">

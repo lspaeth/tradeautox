@@ -2,7 +2,7 @@
 
 <h1>Dashboard</h1>
 <p class="muted"><%= dealer.dealership_name %> — <%= dealer.contact_name %> (<%= dealer.email %>)</p>
-<% if (typeof employeeUser !== 'undefined' && employeeUser) { %><p class="muted">Signed in as <strong><%= employeeUser.name %></strong> (employee) — billing and settings are managed by the dealership owner.</p><% } %>
+<% if (typeof employeeUser !== 'undefined' && employeeUser) { %><p class="muted">Signed in as <strong><%= employeeUser.name %></strong> (employee — <%= typeof employeeAccessLabel !== 'undefined' && employeeAccessLabel ? employeeAccessLabel : 'Sell + buy' %>) — billing and settings are managed by the dealership owner.</p><% } %>
 <% if (dealer.member_number) { %><p><strong>Your ID: <%= dealer.member_number %></strong> <span class="muted small">— other dealers can find your inventory by this ID</span></p><% } %>
 
 <% if (typeof notice !== 'undefined' && notice) { %><p class="alert ok"><%= notice %></p><% } %>
@@ -59,7 +59,7 @@
 </section>
 
 <section class="panel">
-  <h2>Live auctions <a class="btn btn-sm" href="/auctions/new">Start one</a> <a class="btn btn-sm btn-ghost" href="/auctions">All live</a></h2>
+  <h2>Live auctions <% if (typeof canSell === 'undefined' || canSell) { %><a class="btn btn-sm" href="/auctions/new">Start one</a> <% } %><a class="btn btn-sm btn-ghost" href="/auctions">All live</a></h2>
   <% if (typeof myAuctions === 'undefined' || !myAuctions.length) { %>
     <p class="muted">No auctions yet. Working a trade-in? Fire it live and let nearby dealers bid in real time.</p>
   <% } else { %>
@@ -154,7 +154,7 @@
 <% if (typeof isOwner !== 'undefined' && isOwner) { %>
 <section class="panel">
   <h2>Employee logins</h2>
-  <p class="muted small">Let people at your dealership sign in with their own email. They can list, buy, bid, and mark cars sold — but never touch billing, your address, or other employees.</p>
+  <p class="muted small">Let people at your dealership sign in with their own email. Give each person the access they need — sell only, buy only, or both. Nobody but you touches billing, your address, or other employees.</p>
   <form class="form" method="post" action="/dashboard/employee-logins">
     <label>Employee logins
       <select name="enabled">
@@ -170,17 +170,33 @@
         <label>Name<input name="name" placeholder="e.g. Sam Carter" required></label>
         <label>Email<input name="email" type="email" placeholder="sam@yourdealership.com" required></label>
         <label>Temporary password<input name="temp_password" type="password" placeholder="At least 8 characters" required></label>
+        <label>Access
+          <select name="access_level">
+            <option value="both" selected>Both — sell + buy</option>
+            <option value="sell">Sell only</option>
+            <option value="buy">Buy only</option>
+          </select>
+        </label>
       </div>
       <button class="btn btn-sm" type="submit">Add employee</button>
     </form>
     <p class="muted small">They'll set their own password the first time they sign in. Share the temporary password with them directly.</p>
     <% if (typeof employees !== 'undefined' && employees.length) { %>
       <div class="table-scroll"><table class="table">
-        <tr><th>Name</th><th>Email</th><th>Status</th><th></th></tr>
+        <tr><th>Name</th><th>Email</th><th>Access</th><th>Status</th><th></th></tr>
         <% employees.forEach(u => { %>
           <tr>
             <td><%= u.name %></td>
             <td><%= u.email %></td>
+            <td>
+              <form method="post" action="/dashboard/employees/<%= u.id %>/access" style="display:inline">
+                <select name="access_level" onchange="this.form.submit()" title="Change what <%= u.name %> can do">
+                  <option value="both"<%= (u.access_level || 'both') === 'both' ? ' selected' : '' %>>Both</option>
+                  <option value="sell"<%= u.access_level === 'sell' ? ' selected' : '' %>>Sell only</option>
+                  <option value="buy"<%= u.access_level === 'buy' ? ' selected' : '' %>>Buy only</option>
+                </select>
+              </form>
+            </td>
             <td><%= u.active ? 'Active' : 'Off' %><% if (u.must_change_password) { %> · temp password<% } %></td>
             <td>
               <form method="post" action="/dashboard/employees/<%= u.id %>/toggle" style="display:inline">
@@ -198,7 +214,7 @@
 <% } %>
 
 <section class="panel">
-  <h2>My listings <a class="btn btn-sm" href="/listings/new">+ New listing</a> <a class="btn btn-sm btn-ghost" href="/listings/bulk">Bulk Import</a></h2>
+  <h2>My listings <% if (typeof canSell === 'undefined' || canSell) { %><a class="btn btn-sm" href="/listings/new">+ New listing</a> <a class="btn btn-sm btn-ghost" href="/listings/bulk">Bulk Import</a><% } %></h2>
   <% if (!listings.length) { %>
     <p class="muted">No listings yet.</p>
   <% } else { %>
@@ -211,6 +227,7 @@
           <td><% if (l.status === 'draft') { %>Draft — <%= l.photoCounts.total %>/15 photos (<%= l.photoCounts.exterior %> exterior, <%= l.photoCounts.interior %> interior)<% } else { %><%= l.status %><% } %><% if (l.pendingSale) { %> · Sale pending (<%= l.pendingSale %><% if (l.pendingBuyer) { %> — <%= l.pendingBuyer %><% } %><% if (l.pendingDays != null) { %> — <%= l.pendingDays === 0 ? 'today' : l.pendingDays + (l.pendingDays === 1 ? ' day' : ' days') %><% } %>)<% } %></td>
           <td><%= l.daysOnSite || '—' %></td>
           <td>
+            <% if (typeof canSell === 'undefined' || canSell) { %>
             <% if (l.status === 'draft') { %>
               <a class="btn btn-xs" href="/listings/<%= l.id %>/add-photos">Add photos</a>
             <% } else if (l.status === 'active') { %>
@@ -222,6 +239,7 @@
                 <input type="hidden" name="status" value="removed">
                 <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
               </form>
+            <% } %>
             <% } %>
           </td>
         </tr>

@@ -42,7 +42,7 @@
       </p>
     <% } %>
 
-    <% if (!isSeller && auction.status === 'live' && viewerId) { %>
+    <% if (!isSeller && auction.status === 'live' && viewerId && (typeof canBuy === 'undefined' || canBuy)) { %>
       <form class="form" method="post" action="/auctions/<%= auction.id %>/bid">
         <label>Your bid (USD)
           <input name="amount" inputmode="numeric" required placeholder="<%= highBid ? (highBid.amount + 100) : 5000 %>">
@@ -51,12 +51,12 @@
       </form>
     <% } %>
 
-    <% if (isSeller && highBid && auction.status !== 'accepted' && auction.status !== 'cancelled') { %>
+    <% if (isSeller && highBid && auction.status !== 'accepted' && auction.status !== 'cancelled' && (typeof canSell === 'undefined' || canSell)) { %>
       <form method="post" action="/auctions/<%= auction.id %>/accept" onsubmit="return confirm('Accept the high bid of <%= fmtMoney(highBid.amount) %> from <%= highBid.dealership_name %>?');">
         <button class="btn" type="submit">Accept high bid — <%= fmtMoney(highBid.amount) %></button>
       </form>
     <% } %>
-    <% if (isSeller && auction.status === 'live') { %>
+    <% if (isSeller && auction.status === 'live' && (typeof canSell === 'undefined' || canSell)) { %>
       <form method="post" action="/auctions/<%= auction.id %>/cancel" onsubmit="return confirm('Cancel this auction?');" style="margin-top:8px">
         <button class="btn btn-sm btn-ghost" type="submit">Cancel auction</button>
       </form>

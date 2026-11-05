@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
-const { requireMember, requireMemberOrAdmin } = require('../lib/auth');
+const { requireMember, requireMemberOrAdmin, requireSell, requireBuy, canSell } = require('../lib/auth');
 const { createListingFromRequest, collectPhotos, publishDraftIfReady, photoMinimumMessage, MIN_PHOTOS, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
@@ -122,7 +122,7 @@ router.get('/', requireMemberOrAdmin, (req, res) => {
 });
 
 // New listing form
-router.get('/new', requireMember, (req, res) => {
+router.get('/new', requireMember, requireSell, (req, res) => {
   res.render('listing-new', { error: null, formAction: '/listings', heading: 'Sell a vehicle', isAdmin: false });
 });
 
@@ -144,7 +144,7 @@ router.get('/bulk/sample.csv', requireMember, (req, res) => {
   res.send(SAMPLE_CSV);
 });
 
-router.get('/bulk', requireMember, (req, res) => {
+router.get('/bulk', requireMember, requireSell, (req, res) => {
   res.render('bulk-import', { error: null, report: null });
 });
 
@@ -180,7 +180,7 @@ function saveBulkPhoto(photo) {
   return { filename };
 }
 
-router.post('/bulk', requireMember, (req, res) => {
+router.post('/bulk', requireMember, requireSell, (req, res) => {
   upload.bulkUpload(req, res, async (uploadErr) => {
     const render = (error, report) => res.render('bulk-import', { error, report });
     if (uploadErr) return res.status(400).render('bulk-import', { error: upload.friendlyUploadError(uploadErr), report: null });
@@ -294,7 +294,7 @@ router.post('/bulk', requireMember, (req, res) => {
 // Create listing — 15–20 photos (at least 5 exterior + 5 interior) to go
 // live. Short of that, the listing still saves — as a draft, off the board
 // — and the dealer lands on the add-photos page to finish it.
-router.post('/', requireMember, (req, res) => {
+router.post('/', requireMember, requireSell, (req, res) => {
   upload.listingUpload(req, res, (uploadErr) => {
     const renderForm = (msg) => res.status(400).render('listing-new', {
       error: msg, formAction: '/listings', heading: 'Sell a vehicle', isAdmin: false,
@@ -315,7 +315,7 @@ router.post('/', requireMember, (req, res) => {
 
 // Add photos to a listing — finish a draft, or top up a live one.
 // A draft goes live the moment it holds 15+ photos (5+ exterior, 5+ interior).
-router.get('/:id/add-photos', requireMember, (req, res) => {
+router.get('/:id/add-photos', requireMember, requireSell, (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
   const counts = db.getListingPhotoCounts(listing.id);
@@ -325,7 +325,7 @@ router.get('/:id/add-photos', requireMember, (req, res) => {
   });
 });
 
-router.post('/:id/photos', requireMember, (req, res) => {
+router.post('/:id/photos', requireMember, requireSell, (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
   upload.addPhotosUpload(req, res, (uploadErr) => {
@@ -380,7 +380,7 @@ router.get('/:id', requireMemberOrAdmin, (req, res) => {
 // Records the intent, then emails the printable deal sheet to BOTH buyer and
 // seller. No money moves through TradeAutoX — the deal closes directly
 // between them, and the seller marks the listing sold.
-router.post('/:id/buy', requireMember, async (req, res) => {
+router.post('/:id/buy', requireMember, requireBuy, async (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.status !== 'active') return res.status(404).render('404');
   const method = req.body.method;
@@ -412,6 +412,10 @@ router.post('/:id/cancel-intent', (req, res) => {
   if (!listing) return res.status(404).render('404');
   const isOwner = req.session.dealerId === listing.dealer_id;
   if (!isOwner && !req.session.admin) return res.redirect(`/listings/${listing.id}`);
+  // Cancelling a pending sale is a seller action — buy-only logins can't do it.
+  if (isOwner && !canSell(req)) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('Your login is buy-only — selling actions are switched off for you. Ask the dealership owner to change your access level.'));
+  }
   const intent = db.getPurchaseIntent(listing.id);
   db.deletePurchaseIntent(listing.id);
   if (intent) {
@@ -428,7 +432,7 @@ router.post('/:id/cancel-intent', (req, res) => {
 });
 
 // Mark sold / remove (owner only)
-router.post('/:id/status', requireMember, (req, res) => {
+router.post('/:id/status', requireMember, requireSell, (req, res) => {
   const { status } = req.body;
   if (!['sold', 'removed'].includes(status)) return res.redirect('/dashboard');
   db.setListingStatus(req.params.id, req.dealer.id, status);

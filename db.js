@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS dealer_users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'user',           -- 'user' (employees); owners stay in dealers
+  access_level TEXT NOT NULL DEFAULT 'both',   -- 'sell' | 'buy' | 'both': what this employee may do
   active INTEGER NOT NULL DEFAULT 1,
   must_change_password INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -246,6 +247,13 @@ db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dealers_member_number ON dealers(
 // columns) and photo categories (exterior/interior) for the 15–20 photo rule.
 try {
   db.exec(`ALTER TABLE dealers ADD COLUMN employee_logins_enabled INTEGER NOT NULL DEFAULT 0`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+// Per-employee access levels (sell / buy / both). Existing employees keep
+// 'both' — exactly what they could do before.
+try {
+  db.exec(`ALTER TABLE dealer_users ADD COLUMN access_level TEXT NOT NULL DEFAULT 'both'`);
 } catch (e) {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
@@ -536,9 +544,9 @@ const setMustChangePassword = (id, val) =>
 const setEmployeeLoginsEnabled = (dealerId, val) =>
   db.prepare(`UPDATE dealers SET employee_logins_enabled = ? WHERE id = ?`).run(val ? 1 : 0, dealerId);
 
-const createDealerUser = ({ dealer_id, name, email, password_hash }) =>
-  db.prepare(`INSERT INTO dealer_users (dealer_id, name, email, password_hash) VALUES (?, ?, ?, ?)`)
-    .run(dealer_id, name, email, password_hash);
+const createDealerUser = ({ dealer_id, name, email, password_hash, access_level }) =>
+  db.prepare(`INSERT INTO dealer_users (dealer_id, name, email, password_hash, access_level) VALUES (?, ?, ?, ?, ?)`)
+    .run(dealer_id, name, email, password_hash, ['sell', 'buy', 'both'].includes(access_level) ? access_level : 'both');
 
 const getDealerUserByEmail = (email) =>
   db.prepare(`SELECT * FROM dealer_users WHERE email = ?`).get(email);
@@ -547,10 +555,15 @@ const getDealerUserById = (id) =>
   db.prepare(`SELECT * FROM dealer_users WHERE id = ?`).get(id);
 
 const listDealerUsers = (dealerId) =>
-  db.prepare(`SELECT id, dealer_id, name, email, role, active, must_change_password, created_at FROM dealer_users WHERE dealer_id = ? ORDER BY created_at`).all(dealerId);
+  db.prepare(`SELECT id, dealer_id, name, email, role, access_level, active, must_change_password, created_at FROM dealer_users WHERE dealer_id = ? ORDER BY created_at`).all(dealerId);
 
 const setDealerUserActive = (id, dealerId, val) =>
   db.prepare(`UPDATE dealer_users SET active = ? WHERE id = ? AND dealer_id = ?`).run(val ? 1 : 0, id, dealerId);
+
+// Owner changes an employee's access level; it applies on the employee's
+// next request (access is re-read from the DB per request — see lib/auth).
+const setDealerUserAccessLevel = (id, dealerId, level) =>
+  db.prepare(`UPDATE dealer_users SET access_level = ? WHERE id = ? AND dealer_id = ?`).run(level, id, dealerId);
 
 const setDealerUserPassword = (id, passwordHash) =>
   db.prepare(`UPDATE dealer_users SET password_hash = ? WHERE id = ?`).run(passwordHash, id);
@@ -707,7 +720,7 @@ module.exports = {
   createAdminInvite, getAdminInvite, markAdminInviteUsed, revokeAdminInvite,
   listOpenAdminInvites, createAdmin, getAdminByEmail, getAdminById, listAdmins, removeAdmin,
   setEmployeeLoginsEnabled, createDealerUser, getDealerUserByEmail, getDealerUserById,
-  listDealerUsers, setDealerUserActive, setDealerUserPassword, setDealerUserMustChange,
+  listDealerUsers, setDealerUserActive, setDealerUserAccessLevel, setDealerUserPassword, setDealerUserMustChange,
   createAuction, addAuctionPhoto, getAuctionPhotos, getAuction, listAuctions,
   getDealerAuctions, getAuctionBids, getHighBid, placeBid, extendAuction,
   setAuctionStatus, acceptAuctionBid, getBidById, listActiveDealers,

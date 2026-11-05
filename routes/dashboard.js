@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
-const { requireLogin, requireOwner, isOwnerSession, currentDealerUser, BOARD_ACCESS_STATUSES } = require('../lib/auth');
+const { requireLogin, requireOwner, isOwnerSession, currentDealerUser, canSell, canBuy, accessLevel, accessLevelLabel, isValidAccessLevel, BOARD_ACCESS_STATUSES } = require('../lib/auth');
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
 const { daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
@@ -40,6 +40,9 @@ router.get('/', requireLogin, (req, res) => {
     tradePartners: db.listTradePartners(dealer.id),
     isOwner: isOwnerSession(req),
     employeeUser,
+    canSell: canSell(req),
+    canBuy: canBuy(req),
+    employeeAccessLabel: employeeUser ? accessLevelLabel(accessLevel(req)) : null,
     mustChangePassword: employeeUser ? !!employeeUser.must_change_password : !!dealer.must_change_password,
     employees: isOwnerSession(req) ? db.listDealerUsers(dealer.id) : [],
     notice: req.query.notice || null,
@@ -76,8 +79,10 @@ router.post('/employee-logins', requireOwner, (req, res) => {
        : 'Employee logins are off — only the owner login works now.'));
 });
 
-// Add an employee: name + email + temporary password. First login forces a
-// password change. Email must be unique across all dealers and employees.
+// Add an employee: name + email + temporary password + access level
+// (sell only / buy only / both — defaults to both, i.e. today's behavior).
+// First login forces a password change. Email must be unique across all
+// dealers and employees.
 router.post('/employees', requireOwner, (req, res) => {
   const dealer = db.getDealerById(req.session.dealerId);
   if (!dealer) return res.redirect('/login');
@@ -86,6 +91,7 @@ router.post('/employees', requireOwner, (req, res) => {
   const name = (req.body.name || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
   const tempPassword = req.body.temp_password || '';
+  const level = isValidAccessLevel(req.body.access_level) ? req.body.access_level : 'both';
   if (!name || !email || !/.+@.+\..+/.test(email)) return fail('Enter the employee\u2019s name and a valid email address.');
   if (tempPassword.length < 8) return fail('Temporary password must be at least 8 characters.');
   if (db.getDealerByEmail(email) || db.getDealerUserByEmail(email)) {
@@ -96,9 +102,21 @@ router.post('/employees', requireOwner, (req, res) => {
     name,
     email,
     password_hash: bcrypt.hashSync(tempPassword, 12),
+    access_level: level,
   });
   res.redirect('/dashboard?notice=' + encodeURIComponent(
-    `${name} can now sign in with ${email} and the temporary password — they\u2019ll set their own password on first login.`));
+    `${name} can now sign in with ${email} and the temporary password — they\u2019ll set their own password on first login. Access: ${accessLevelLabel(level)}.`));
+});
+
+// Change an employee's access level. Applies on their next request.
+router.post('/employees/:id/access', requireOwner, (req, res) => {
+  const user = db.getDealerUserById(req.params.id);
+  if (!user || user.dealer_id !== req.session.dealerId) return res.redirect('/dashboard');
+  const level = req.body.access_level;
+  if (!isValidAccessLevel(level)) return res.redirect('/dashboard?error=' + encodeURIComponent('Pick an access level: sell only, buy only, or both.'));
+  db.setDealerUserAccessLevel(user.id, user.dealer_id, level);
+  res.redirect('/dashboard?notice=' + encodeURIComponent(
+    `${user.name} now has ${accessLevelLabel(level).toLowerCase()} access.`));
 });
 
 // Deactivate / reactivate one employee. Deactivated employees can't log in;

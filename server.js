@@ -41,6 +41,11 @@ app.use(session({
 app.use((req, res, next) => {
   res.locals.currentDealer = req.session.dealerId ? db.getDealerById(req.session.dealerId) : null;
   res.locals.isAdmin = !!req.session.admin;
+  // Employee access level (owner/admin = both). Views hide the buttons the
+  // session can't use; the server-side guards in lib/auth are the real check.
+  const { canSell, canBuy } = require('./lib/auth');
+  res.locals.canSell = canSell(req);
+  res.locals.canBuy = canBuy(req);
   // Admin "view as dealer" impersonation: the dealer whose eyes we're seeing through.
   const impId = req.session.impersonatingDealerId;
   res.locals.impersonating = (impId && req.session.dealerId === impId) ? db.getDealerById(impId) : null;
