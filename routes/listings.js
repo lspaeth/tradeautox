@@ -1,12 +1,12 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireMember, requireMemberOrAdmin, requireSell, requireBuy, canSell } = require('../lib/auth');
 const { createListingFromRequest, collectPhotos, publishDraftIfReady, photoMinimumMessage, MIN_PHOTOS, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
+const { compressVehiclePhotos, compressVehiclePhotoBuffer } = require('../lib/images');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
 
@@ -170,13 +170,13 @@ function indexZipPhotos(buffer) {
 
 // Write one extracted photo into the uploads dir under a generated name
 // (same scheme as lib/upload.js) and return the multer-style { filename }
-// the listing creator expects.
-function saveBulkPhoto(photo) {
+// the listing creator expects. The photo is compressed to a web-sized JPEG
+// first — bulk photos get the same treatment as form uploads.
+async function saveBulkPhoto(photo) {
   const dir = path.join(process.env.DATA_DIR || path.join(__dirname, '..'), 'uploads');
   fs.mkdirSync(dir, { recursive: true });
-  const ext = path.extname(photo.name).toLowerCase();
-  const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
-  fs.writeFileSync(path.join(dir, filename), photo.data);
+  const { buffer, filename } = await compressVehiclePhotoBuffer(photo.data, photo.name);
+  fs.writeFileSync(path.join(dir, filename), buffer);
   return { filename };
 }
 
@@ -234,7 +234,7 @@ router.post('/bulk', requireMember, requireSell, (req, res) => {
         const spec = decoded.spec;
         const matched = (photosByVin.get(vin) || []).slice(0, BULK_MAX_PHOTOS_PER_CAR);
         try {
-          const savedPhotos = matched.map(saveBulkPhoto);
+          const savedPhotos = await Promise.all(matched.map(saveBulkPhoto));
           const created = createListingFromRequest(req.dealer.id, {
             vin,
             make: spec.make,
@@ -295,11 +295,17 @@ router.post('/bulk', requireMember, requireSell, (req, res) => {
 // live. Short of that, the listing still saves — as a draft, off the board
 // — and the dealer lands on the add-photos page to finish it.
 router.post('/', requireMember, requireSell, (req, res) => {
-  upload.listingUpload(req, res, (uploadErr) => {
+  upload.listingUpload(req, res, async (uploadErr) => {
     const renderForm = (msg) => res.status(400).render('listing-new', {
       error: msg, formAction: '/listings', heading: 'Sell a vehicle', isAdmin: false,
     });
     if (uploadErr) return renderForm(upload.friendlyUploadError(uploadErr));
+    try {
+      await compressVehiclePhotos(req.files);
+    } catch (err) {
+      console.error(err);
+      return renderForm(err.message || 'One of the photos could not be processed — please re-save it as a JPG and try again.');
+    }
     try {
       const created = createListingFromRequest(req.dealer.id, req.body, req.files, { enforcePhotoMinimum: 'split' });
       if (created.status === 'draft') {
@@ -328,13 +334,19 @@ router.get('/:id/add-photos', requireMember, requireSell, (req, res) => {
 router.post('/:id/photos', requireMember, requireSell, (req, res) => {
   const listing = db.getListing(req.params.id);
   if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
-  upload.addPhotosUpload(req, res, (uploadErr) => {
+  upload.addPhotosUpload(req, res, async (uploadErr) => {
     const counts = () => db.getListingPhotoCounts(listing.id);
     const renderPage = (msg, notice) => res.status(uploadErr ? 400 : 200).render('listing-add-photos', {
       listing, photos: db.getListingPhotos(listing.id), counts: counts(),
       error: msg || null, notice: notice || null,
     });
     if (uploadErr) return renderPage(upload.friendlyUploadError(uploadErr));
+    try {
+      await compressVehiclePhotos(req.files);
+    } catch (err) {
+      console.error(err);
+      return renderPage(err.message || 'One of the photos could not be processed — please re-save it as a JPG and try again.');
+    }
     try {
       const added = collectPhotos(req.files);
       if (!added.length) return renderPage('Choose at least one photo to add.');

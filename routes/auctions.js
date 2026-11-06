@@ -5,6 +5,7 @@ const { requireMember, requireMemberOrAdmin, requireSell, requireBuy, currentDea
 const { distanceMiles, isValidZip } = require('../lib/geo');
 const { sendMail, auctionAlertEmail, auctionWonEmail, auctionSoldEmail } = require('../lib/mail');
 const { SPEC_FIELDS } = require('../lib/listings');
+const { compressVehiclePhotos } = require('../lib/images');
 
 const router = express.Router();
 
@@ -60,6 +61,12 @@ router.post('/', requireMember, requireSell, (req, res) => {
       dealerZip: req.dealer.zip || '',
     });
     if (uploadErr) return renderErr(upload.friendlyUploadError(uploadErr));
+    try {
+      await compressVehiclePhotos(req.files);
+    } catch (err) {
+      console.error(err);
+      return renderErr(err.message || 'One of the photos could not be processed — please re-save it as a JPG and try again.');
+    }
     try {
       const seller = req.dealer;
       if (!isValidZip(seller.zip)) {
