@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS dealers (
   phone TEXT,
   license_number TEXT NOT NULL,
   license_photo_path TEXT,
+  ein TEXT,                    -- federal EIN, collected at signup (AuctionACCESS-style verification)
+  legal_name TEXT,             -- legal business name
+  dba TEXT,                    -- doing-business-as name; NULL = same as legal name
+  company_type TEXT,           -- Sole Proprietor | Corporation | Partnership | LLC
+  auction_access_id TEXT,      -- optional AuctionACCESS member number (supporting evidence only; never verified against AutoTec — no public API)
   status TEXT NOT NULL DEFAULT 'pending',            -- pending | approved | rejected
   membership_status TEXT NOT NULL DEFAULT 'none',    -- none | active | past_due | inactive
   employee_logins_enabled INTEGER NOT NULL DEFAULT 0, -- owner toggle: employee logins on/off
@@ -231,6 +236,18 @@ for (const col of [
   }
 }
 
+// Best-effort migration: AuctionACCESS-style business verification fields
+// (EIN, legal name, DBA, company type, AuctionACCESS ID) collected at
+// signup. Nullable: existing dealers are grandfathered and never have to
+// re-submit anything.
+for (const col of ['ein TEXT', 'legal_name TEXT', 'dba TEXT', 'company_type TEXT', 'auction_access_id TEXT']) {
+  try {
+    db.exec(`ALTER TABLE dealers ADD COLUMN ${col}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // Best-effort migration: sequential member number ("ID" in the UI). Assigned
 // at approval in chronological order starting at 1001; a number is never
 // reused. SQLite can't add a UNIQUE column via ALTER TABLE, so the column
@@ -272,12 +289,15 @@ try {
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
     address, city, state,
+    ein, legal_name, dba, company_type, auction_access_id,
     dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
   VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
     @address, @city, @state,
+    @ein, @legal_name, @dba, @company_type, @auction_access_id,
     @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
 `).run({
   zip: null, address: null, city: null, state: null,
+  ein: null, legal_name: null, dba: null, company_type: null, auction_access_id: null,
   dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
   dl_number: null, dl_address: null, dl_city: null, dl_state: null,
   dl_zip: null, dl_name_match: null, dl_expired: null,

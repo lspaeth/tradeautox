@@ -26,13 +26,19 @@
     <p class="muted">No pending applications.</p>
   <% } else { %>
     <div class="table-scroll"><table class="table">
-      <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Driver's license check</th><th>Applied</th><th></th></tr>
+      <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Verification</th><th>Driver's license check</th><th>Applied</th><th></th></tr>
       <% pending.forEach(d => { %>
         <tr>
           <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span></td>
           <td><%= d.contact_name %></td>
           <td><%= d.license_number %></td>
           <td><% if (d.license_photo_path) { %><a href="<%= d.license_photo_path %>" target="_blank" rel="noopener">View</a><% } else { %><span class="muted">—</span><% } %></td>
+          <td><div class="dl-check">
+            <div><strong><%= d.legal_name || '—' %></strong><% if (d.dba) { %><br>DBA: <%= d.dba %><% } else if (d.legal_name) { %><br><span class="muted">DBA same as legal name</span><% } %></div>
+            <div><%= d.company_type || '—' %> · EIN <%= d.ein || '—' %></div>
+            <div>Phone: <%= d.phone || '—' %></div>
+            <% if (d.auction_access_id) { %><div>AuctionACCESS ID: <%= d.auction_access_id %> <span class="muted">(supporting evidence only — not verified against AutoTec)</span></div><% } %>
+          </div></td>
           <td><% if (d.dl_scanned_at) { %>
             <div class="dl-check">
               <div><strong><%= d.dl_name || '—' %></strong><% if (d.dl_state) { %> · <%= d.dl_state %><% } %></div>

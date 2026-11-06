@@ -4,6 +4,13 @@
 <p class="muted"><%= dealer.dealership_name %> — <%= dealer.contact_name %> (<%= dealer.email %>)</p>
 <% if (typeof employeeUser !== 'undefined' && employeeUser) { %><p class="muted">Signed in as <strong><%= employeeUser.name %></strong> (employee — <%= typeof employeeAccessLabel !== 'undefined' && employeeAccessLabel ? employeeAccessLabel : 'Sell + buy' %>) — billing and settings are managed by the dealership owner.</p><% } %>
 <% if (dealer.member_number) { %><p><strong>Your ID: <%= dealer.member_number %></strong> <span class="muted small">— other dealers can find your inventory by this ID</span></p><% } %>
+<% if (typeof isOwner !== 'undefined' && isOwner && (dealer.legal_name || dealer.ein || dealer.company_type)) { %>
+<section class="panel">
+  <h2>Business verification</h2>
+  <p class="muted small">The paperwork behind your member ID — verified at approval. Read-only; contact TradeAutoX if anything needs updating.</p>
+  <p>Legal name: <strong><%= dealer.legal_name || '—' %></strong><% if (dealer.dba) { %><br>DBA: <%= dealer.dba %><% } %><br>Company type: <%= dealer.company_type || '—' %> · EIN: <%= dealer.ein || '—' %><% if (dealer.auction_access_id) { %><br>AuctionACCESS ID: <%= dealer.auction_access_id %><% } %></p>
+</section>
+<% } %>
 
 <% if (typeof notice !== 'undefined' && notice) { %><p class="alert ok"><%= notice %></p><% } %>
 <% if (typeof error !== 'undefined' && error) { %><p class="alert error"><%= error %></p><% } %>

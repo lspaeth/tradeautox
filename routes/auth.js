@@ -32,9 +32,29 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       console.log(`[spam] blocked signup (${spamTrap})`);
       return res.redirect('/dashboard');
     }
-    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state } = req.body;
+    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state,
+      ein, legal_name, dba, company_type, auction_access_id } = req.body;
     if (!dealership_name || !contact_name || !email || !password || !license_number) {
       return res.status(400).render('signup', { error: 'Please fill in all required fields.', form_ts: Date.now() });
+    }
+    // ---- AuctionACCESS-style business verification (all required except
+    // DBA-when-same-as-legal and the AuctionACCESS ID itself) ----
+    // DBA blank = same as the legal name; stored NULL so the admin view can
+    // say so plainly instead of showing a duplicated name.
+    const COMPANY_TYPES = ['Sole Proprietor', 'Corporation', 'Partnership', 'LLC'];
+    if (!legal_name || !legal_name.trim()) {
+      return res.status(400).render('signup', { error: 'Please enter the legal business name.', form_ts: Date.now() });
+    }
+    const einDigits = String(ein || '').replace(/\D/g, '');
+    if (einDigits.length !== 9) {
+      return res.status(400).render('signup', { error: 'Please enter a valid 9-digit EIN (for example 12-3456789).', form_ts: Date.now() });
+    }
+    if (!COMPANY_TYPES.includes(company_type)) {
+      return res.status(400).render('signup', { error: 'Please choose a company type.', form_ts: Date.now() });
+    }
+    const phoneDigits = String(phone || '').replace(/\D/g, '');
+    if (phoneDigits.length < 7) {
+      return res.status(400).render('signup', { error: 'Please enter a business phone number.', form_ts: Date.now() });
     }
     const { cleanZip, isValidZip } = require('../lib/geo');
     if (!isValidZip(zip)) {
@@ -93,6 +113,15 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       address: (address || '').trim(),
       city: (city || '').trim(),
       state: (state || '').trim(),
+      ein: einDigits.slice(0, 2) + '-' + einDigits.slice(2),
+      legal_name: legal_name.trim(),
+      dba: (dba || '').trim() || null,
+      company_type,
+      // Optional supporting evidence only: an AuctionACCESS ID means the
+      // dealer already passed AutoTec's vetting, which can speed approval —
+      // but there is no public API to check it, so it never substitutes for
+      // the license, EIN, or any other check above.
+      auction_access_id: (auction_access_id || '').trim() || null,
       ...dlFields,
     });
     req.session.dealerId = info.lastInsertRowid;

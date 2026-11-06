@@ -21,8 +21,8 @@
       <button type="button" class="pw-toggle" aria-label="Show password">👁</button>
     </span>
   </label>
-  <label>Phone
-    <input name="phone" type="tel">
+  <label>Business phone *
+    <input name="phone" type="tel" required>
   </label>
   <label>Dealership street address <span class="muted small">(so deal sheets can list it)</span>
     <input name="address" autocomplete="street-address">
@@ -36,6 +36,31 @@
   <label>Dealership ZIP code * <span class="muted small">(powers radius search and live auction alerts)</span>
     <input name="zip" inputmode="numeric" maxlength="5" autocomplete="postal-code" required>
   </label>
+  <fieldset class="dl-verify">
+    <legend>Business verification</legend>
+    <p class="muted small">TradeAutoX verifies every dealership the way AuctionACCESS does — your member number is only issued once these check out. All fields below are required except the DBA and the AuctionACCESS ID.</p>
+    <label>Legal business name *
+      <input name="legal_name" required>
+    </label>
+    <label>Doing business as (DBA) <span class="muted small">(leave blank if the same as the legal name)</span>
+      <input name="dba">
+    </label>
+    <label>Company type *
+      <select name="company_type" required>
+        <option value="" selected>Choose one…</option>
+        <option>Sole Proprietor</option>
+        <option>Corporation</option>
+        <option>Partnership</option>
+        <option>LLC</option>
+      </select>
+    </label>
+    <label>EIN (federal tax ID) * <span class="muted small">(9 digits, for example 12-3456789)</span>
+      <input name="ein" inputmode="numeric" placeholder="12-3456789" required>
+    </label>
+    <label>AuctionACCESS ID <span class="muted small">(optional — if you already have one, it speeds up approval. It never replaces the checks above.)</span>
+      <input name="auction_access_id" placeholder="Your AuctionACCESS member number">
+    </label>
+  </fieldset>
   <label>Wholesale license number *
     <input name="license_number" required>
   </label>
