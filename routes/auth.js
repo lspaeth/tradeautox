@@ -32,7 +32,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       console.log(`[spam] blocked signup (${spamTrap})`);
       return res.redirect('/dashboard');
     }
-    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state,
+    const { dealership_name, contact_name, email, password, phone, license_number, accept_terms, zip, address, city, state, dealer_type,
       ein, legal_name, dba, company_type, auction_access_id } = req.body;
     if (!dealership_name || !contact_name || !email || !password || !license_number) {
       return res.status(400).render('signup', { error: 'Please fill in all required fields.', form_ts: Date.now() });
@@ -51,6 +51,9 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
     }
     if (!COMPANY_TYPES.includes(company_type)) {
       return res.status(400).render('signup', { error: 'Please choose a company type.', form_ts: Date.now() });
+    }
+    if (dealer_type !== 'franchise' && dealer_type !== 'other') {
+      return res.status(400).render('signup', { error: 'Please choose your dealer type.', form_ts: Date.now() });
     }
     const phoneDigits = String(phone || '').replace(/\D/g, '');
     if (phoneDigits.length < 7) {
@@ -116,6 +119,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       address: (address || '').trim(),
       city: (city || '').trim(),
       state: (state || '').trim(),
+      dealer_type,
       ein: einDigits.slice(0, 2) + '-' + einDigits.slice(2),
       legal_name: legal_name.trim(),
       dba: (dba || '').trim() || null,

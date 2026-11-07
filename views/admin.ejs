@@ -36,6 +36,7 @@
           <td><div class="dl-check">
             <div><strong><%= d.legal_name || '—' %></strong><% if (d.dba) { %><br>DBA: <%= d.dba %><% } else if (d.legal_name) { %><br><span class="muted">DBA same as legal name</span><% } %></div>
             <div><%= d.company_type || '—' %> · EIN <%= d.ein || '—' %></div>
+            <div>Dealer type: <%= d.dealer_type === 'franchise' ? 'Franchise dealer' : (d.dealer_type === 'other' ? 'Other' : '—') %></div>
             <div>Phone: <%= d.phone || '—' %></div>
             <% if (d.auction_access_id) { %><div>AuctionACCESS ID: <%= d.auction_access_id %> <span class="muted">(supporting evidence only — not verified against AutoTec)</span></div><% } %>
           </div></td>

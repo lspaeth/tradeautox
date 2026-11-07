@@ -37,6 +37,17 @@
     <input name="zip" inputmode="numeric" maxlength="5" autocomplete="postal-code" required>
   </label>
   <fieldset class="dl-verify">
+    <legend>Dealer type *</legend>
+    <label class="check">
+      <input type="radio" name="dealer_type" value="franchise" required>
+      Franchise dealer
+    </label>
+    <label class="check">
+      <input type="radio" name="dealer_type" value="other" required>
+      Other
+    </label>
+  </fieldset>
+  <fieldset class="dl-verify">
     <legend>Business verification</legend>
     <p class="muted small">TradeAutoX verifies every dealership the way AuctionACCESS does — your member number is only issued once these check out. All fields below are required except the DBA and the AuctionACCESS ID.</p>
     <label>Legal business name *

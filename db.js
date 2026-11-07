@@ -248,6 +248,14 @@ for (const col of ['ein TEXT', 'legal_name TEXT', 'dba TEXT', 'company_type TEXT
   }
 }
 
+// Best-effort migration: dealer type at signup ("franchise" | "other").
+// Nullable: existing dealers are grandfathered and never have to re-submit.
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN dealer_type TEXT`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
 // Best-effort migration: sequential member number ("ID" in the UI). Assigned
 // at approval in chronological order starting at 1001; a number is never
 // reused. SQLite can't add a UNIQUE column via ALTER TABLE, so the column
@@ -288,15 +296,15 @@ try {
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
-    address, city, state,
+    address, city, state, dealer_type,
     ein, legal_name, dba, company_type, auction_access_id,
     dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
   VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
-    @address, @city, @state,
+    @address, @city, @state, @dealer_type,
     @ein, @legal_name, @dba, @company_type, @auction_access_id,
     @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
 `).run({
-  zip: null, address: null, city: null, state: null,
+  zip: null, address: null, city: null, state: null, dealer_type: null,
   ein: null, legal_name: null, dba: null, company_type: null, auction_access_id: null,
   dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
   dl_number: null, dl_address: null, dl_city: null, dl_state: null,
