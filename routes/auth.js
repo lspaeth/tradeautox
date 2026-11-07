@@ -56,6 +56,9 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
     if (phoneDigits.length < 7) {
       return res.status(400).render('signup', { error: 'Please enter a business phone number.', form_ts: Date.now() });
     }
+    if (!address || !address.trim()) {
+      return res.status(400).render('signup', { error: 'Please enter the dealership street address.', form_ts: Date.now() });
+    }
     const { cleanZip, isValidZip } = require('../lib/geo');
     if (!isValidZip(zip)) {
       return res.status(400).render('signup', { error: 'Please enter a valid 5-digit dealership ZIP code.', form_ts: Date.now() });
