@@ -133,6 +133,7 @@ router.get('/', requireAdmin, (req, res) => {
     demoEmail: db.DEMO_DEALER_EMAIL,
     admins: db.listAdmins(),
     invites: db.listOpenAdminInvites().map((i) => ({ ...i, link: `${baseUrl}/admin/setup/${i.token}` })),
+    referrals: db.listAllReferrals(),
     adminEmail: req.session.admin_email || null,
     ownerEmail: process.env.ADMIN_EMAIL || null,
   });

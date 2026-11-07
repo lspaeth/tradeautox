@@ -144,6 +144,24 @@ CREATE TABLE IF NOT EXISTS trade_partners (
   PRIMARY KEY (dealer_id, partner_id)
 );
 
+-- Referrals: one row per referred dealer. The referrer earns one free
+-- month ($599 credit) when the referred dealer completes the 30-day trial
+-- and their first charge succeeds. status: 'pending' (not paid yet) |
+-- 'earned' (free month granted via Stripe) | 'pending_grant' (referred
+-- dealer paid but the referrer had no Stripe customer to credit — needs
+-- admin attention). UNIQUE on referred_dealer_id: a dealer can earn a
+-- referrer at most one free month, and the grant is recorded exactly once.
+CREATE TABLE IF NOT EXISTS referrals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  referrer_dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  referred_dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  stripe_balance_transaction_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  granted_at TEXT,
+  UNIQUE (referred_dealer_id)
+);
+
 -- Extra admin logins. The owner stays on ADMIN_EMAIL/ADMIN_PASSWORD env vars;
 -- these rows are for additional people (added via invite link), each with
 -- their own credentials so access can be granted and revoked individually.
@@ -256,6 +274,16 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migration: who referred this dealer (referrer's dealers.id).
+// Nullable: dealers who signed up without a referral link, and all existing
+// dealers, have NULL here. The referrals table is the reward-tracking
+// record; this column is the denormalized link on the dealer record.
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN referred_by_dealer_id INTEGER`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
 // Best-effort migration: sequential member number ("ID" in the UI). Assigned
 // at approval in chronological order starting at 1001; a number is never
 // reused. SQLite can't add a UNIQUE column via ALTER TABLE, so the column
@@ -296,15 +324,15 @@ try {
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
   INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
-    address, city, state, dealer_type,
+    address, city, state, dealer_type, referred_by_dealer_id,
     ein, legal_name, dba, company_type, auction_access_id,
     dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
   VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
-    @address, @city, @state, @dealer_type,
+    @address, @city, @state, @dealer_type, @referred_by_dealer_id,
     @ein, @legal_name, @dba, @company_type, @auction_access_id,
     @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
 `).run({
-  zip: null, address: null, city: null, state: null, dealer_type: null,
+  zip: null, address: null, city: null, state: null, dealer_type: null, referred_by_dealer_id: null,
   ein: null, legal_name: null, dba: null, company_type: null, auction_access_id: null,
   dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
   dl_number: null, dl_address: null, dl_city: null, dl_state: null,
@@ -361,6 +389,55 @@ function backfillMemberNumbers() {
   for (const r of rows) assignMemberNumber(r.id);
 }
 backfillMemberNumbers();
+
+// ---- referrals ----
+// One row per referred dealer; UNIQUE(referred_dealer_id) means a dealer can
+// earn a referrer at most one free month. INSERT OR IGNORE keeps a double
+// submit (or a retry) from ever creating a second row.
+const createReferral = (referrerDealerId, referredDealerId) =>
+  db.prepare(`INSERT OR IGNORE INTO referrals (referrer_dealer_id, referred_dealer_id, status) VALUES (?, ?, 'pending')`)
+    .run(referrerDealerId, referredDealerId);
+
+const getReferralByReferred = (referredDealerId) =>
+  db.prepare(`SELECT * FROM referrals WHERE referred_dealer_id = ?`).get(referredDealerId);
+
+// A referrer's own referrals, newest first, with the referred dealer's name.
+const listReferralsByReferrer = (referrerDealerId) =>
+  db.prepare(`
+    SELECT r.*, d.dealership_name AS referred_name, d.member_number AS referred_number,
+      d.status AS referred_status, d.membership_status AS referred_membership
+    FROM referrals r JOIN dealers d ON d.id = r.referred_dealer_id
+    WHERE r.referrer_dealer_id = ? ORDER BY r.created_at DESC
+  `).all(referrerDealerId);
+
+// Every referral, for the admin panel: who referred whom, reward state.
+const listAllReferrals = () =>
+  db.prepare(`
+    SELECT r.*,
+      ref.dealership_name AS referrer_name, ref.member_number AS referrer_number,
+      d.dealership_name AS referred_name, d.member_number AS referred_number,
+      d.status AS referred_status, d.membership_status AS referred_membership
+    FROM referrals r
+    JOIN dealers ref ON ref.id = r.referrer_dealer_id
+    JOIN dealers d ON d.id = r.referred_dealer_id
+    ORDER BY r.created_at DESC
+  `).all();
+
+// Claim the reward exactly once: only a 'pending' row flips to 'earned'.
+// Returns true only when this call made the flip, so a retried webhook (or
+// a race) can never grant the same free month twice.
+const markReferralEarned = (id, balanceTransactionId) =>
+  db.prepare(`
+    UPDATE referrals SET status = 'earned', stripe_balance_transaction_id = ?, granted_at = datetime('now')
+    WHERE id = ? AND status = 'pending'
+  `).run(balanceTransactionId, id).changes > 0;
+
+// The referred dealer paid, but the referrer has no Stripe customer to
+// credit (never checked out). The reward stays visible in admin as needing
+// attention instead of silently vanishing.
+const markReferralPendingGrant = (id) =>
+  db.prepare(`UPDATE referrals SET status = 'pending_grant' WHERE id = ? AND status = 'pending'`)
+    .run(id).changes > 0;
 
 // ---- trade partners (one-sided follow, v1: no mutual acceptance) ----
 const addTradePartner = (dealerId, partnerId) =>
@@ -738,6 +815,8 @@ module.exports = {
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   setDealerZip, setDealerAddress, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
   assignMemberNumber, getDealerByMemberNumber, backfillMemberNumbers,
+  createReferral, getReferralByReferred, listReferralsByReferrer, listAllReferrals,
+  markReferralEarned, markReferralPendingGrant,
   addTradePartner, removeTradePartner, listTradePartners,
   createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
   createListing, getActiveListingByVin, getDealerListingByVin, addListingPhoto, getListing, getListingPhotos,

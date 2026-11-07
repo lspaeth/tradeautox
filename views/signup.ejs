@@ -91,6 +91,9 @@
     <p class="muted small">Privacy: the photo of your license never leaves your phone — only the details printed on the card are read and sent.</p>
     <input type="hidden" name="dl_payload" id="dl-payload" value="">
   </fieldset>
+  <label>Referred by another dealer? <span class="muted small">(optional — enter their member ID and they earn a free month when you start paying)</span>
+    <input name="ref" inputmode="numeric" placeholder="e.g. 1001" value="<%= typeof ref !== 'undefined' && ref ? ref : '' %>">
+  </label>
   <label class="check">
     <input type="checkbox" name="accept_terms" value="1" required>
     I accept the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a> *

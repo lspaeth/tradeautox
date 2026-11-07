@@ -158,6 +158,32 @@
   <% } %>
 </section>
 
+<% if (typeof isOwner !== 'undefined' && isOwner && dealer.member_number && typeof referralLink !== 'undefined' && referralLink) { %>
+<section class="panel">
+  <h2>Referrals — earn a free month</h2>
+  <p class="muted small">Share your link with another licensed dealer. When they finish their 30-day trial and pay their first month, you get a free month ($599) off your membership — one free month per dealer who pays.</p>
+  <label>Your referral link
+    <input id="referral-link" readonly value="<%= referralLink %>" onclick="this.select()">
+  </label>
+  <button class="btn btn-sm" type="button" onclick="if (navigator.clipboard) { navigator.clipboard.writeText(document.getElementById('referral-link').value); this.textContent = 'Copied!'; }">Copy link</button>
+  <p><strong><%= referralCounts.earned %> free month<%= referralCounts.earned === 1 ? '' : 's' %> earned</strong> · <%= referralCounts.pending %> referral<%= referralCounts.pending === 1 ? '' : 's' %> pending</p>
+  <% if (typeof myReferrals !== 'undefined' && myReferrals.length) { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Dealer</th><th>Referred</th><th>Reward</th></tr>
+      <% myReferrals.forEach(r => { %>
+        <tr>
+          <td><%= r.referred_name %> (ID <%= r.referred_number || '—' %>)</td>
+          <td><%= new Date(r.created_at + 'Z').toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) %></td>
+          <td><%= r.status === 'earned' ? 'Earned — free month applied' : (r.status === 'pending_grant' ? 'Paid — free month on its way' : 'Pending — they haven\u2019t paid yet') %></td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } else { %>
+    <p class="muted">No referrals yet.</p>
+  <% } %>
+</section>
+<% } %>
+
 <% if (typeof isOwner !== 'undefined' && isOwner) { %>
 <section class="panel">
   <h2>Employee logins</h2>

@@ -118,6 +118,51 @@ async function handleWebhook(req, res) {
         }
         break;
       }
+      case 'invoice.payment_succeeded': {
+        // Referral reward: the referred dealer's FIRST real charge. A trial
+        // invoice is $0 and has billing_reason 'subscription_create'; the
+        // charge that ends the trial is a paid 'subscription_cycle' invoice.
+        // Only that first paid cycle invoice can ever trigger the reward,
+        // and the referral row flips pending -> earned exactly once.
+        const inv = event.data.object;
+        if (inv.billing_reason !== 'subscription_cycle' || !(inv.amount_paid > 0)) break;
+        const dealer = db.getDealerByStripeCustomer(inv.customer);
+        if (!dealer) break;
+        const referral = db.getReferralByReferred(dealer.id);
+        if (!referral || referral.status !== 'pending') break;
+        if (referral.referrer_dealer_id === dealer.id) break; // never reward a self-referral
+        const referrer = db.getDealerById(referral.referrer_dealer_id);
+        if (!referrer) break;
+        if (!referrer.stripe_customer_id) {
+          // The referrer never checked out, so there is no Stripe customer
+          // to credit. Leave it visible in admin as needing attention
+          // instead of silently dropping the reward.
+          db.markReferralPendingGrant(referral.id);
+          console.log(`[referral] referrer ${referrer.id} has no Stripe customer — reward for referred dealer ${dealer.id} left pending_grant`);
+          break;
+        }
+        try {
+          const stripe = getStripe();
+          // A negative customer-balance transaction is a credit: Stripe
+          // applies it to the referrer's NEXT invoice, so a $599 credit
+          // makes that invoice $0 — one genuinely free month, not a flag.
+          const tx = await stripe.customers.createBalanceTransaction(referrer.stripe_customer_id, {
+            amount: -inv.amount_paid,
+            currency: inv.currency || 'usd',
+            description: `Referral reward — one free month for referring ${dealer.dealership_name} (ID ${dealer.member_number || dealer.id})`,
+          });
+          if (db.markReferralEarned(referral.id, tx.id)) {
+            console.log(`[referral] free month granted to dealer ${referrer.id} (${tx.id})`);
+            db.createNotification(referrer.id, 'referral_earned', dealer.id,
+              `Referral reward: ${dealer.dealership_name} paid their first month — you earned a free month ($${(inv.amount_paid / 100).toLocaleString('en-US')}) off your next invoice.`);
+          } else {
+            console.warn(`[referral] reward for referred dealer ${dealer.id} was already earned — Stripe credit ${tx.id} needs review`);
+          }
+        } catch (err) {
+          console.error('[referral] free-month grant failed:', err.message);
+        }
+        break;
+      }
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
         const sub = event.data.object;

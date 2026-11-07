@@ -31,6 +31,15 @@ router.get('/', requireLogin, (req, res) => {
         .map((a) => ({ ...a, distance: distanceMiles(dealer.zip, a.seller_zip) }))
         .filter((a) => a.distance != null && a.distance <= a.radius)
     : [];
+  // Referrals: the link is tied to the member ID, so only dealers who have
+  // one (approved) can refer. Counts are earned vs still pending payment.
+  const baseUrl = (process.env.BASE_URL || 'https://www.tradeautox.com').replace(/\/$/, '');
+  const referralLink = dealer.member_number ? `${baseUrl}/signup?ref=${dealer.member_number}` : null;
+  const myReferrals = dealer.member_number ? db.listReferralsByReferrer(dealer.id) : [];
+  const referralCounts = {
+    earned: myReferrals.filter((r) => r.status === 'earned').length,
+    pending: myReferrals.filter((r) => r.status !== 'earned').length,
+  };
   res.render('dashboard', {
     dealer,
     listings,
@@ -38,6 +47,9 @@ router.get('/', requireLogin, (req, res) => {
     myAuctions,
     liveNearMe,
     tradePartners: db.listTradePartners(dealer.id),
+    referralLink,
+    myReferrals,
+    referralCounts,
     isOwner: isOwnerSession(req),
     employeeUser,
     canSell: canSell(req),

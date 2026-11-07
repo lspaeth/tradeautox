@@ -10,7 +10,10 @@ const router = express.Router();
 
 router.get('/signup', (req, res) => {
   if (req.session.dealerId) return res.redirect('/dashboard');
-  res.render('signup', { error: null, form_ts: Date.now() });
+  // Referral link: /signup?ref=<member ID>. Anything that isn't a plain
+  // number is ignored — a bad ref must never error a signup.
+  const ref = /^\d+$/.test(String(req.query.ref || '')) ? String(req.query.ref) : '';
+  res.render('signup', { error: null, form_ts: Date.now(), ref });
 });
 
 router.post('/signup', upload.single('license_photo'), async (req, res) => {
@@ -106,6 +109,20 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       }
     }
     const password_hash = await bcrypt.hash(password, 12);
+    // ---- Referral: ?ref=<member ID> (or the ID typed on the form). Resolve
+    // it to a real dealer; anything else is ignored silently — a bad ref
+    // must never error a signup. Self-referral can't happen: the email
+    // check above guarantees the applicant isn't an existing dealer, and
+    // the demo dealer can't refer anyone.
+    let referredByDealerId = null;
+    const refNum = /^\d+$/.test(String(req.body.ref || '').trim())
+      ? parseInt(String(req.body.ref).trim(), 10) : null;
+    if (refNum) {
+      const referrer = db.getDealerByMemberNumber(refNum);
+      if (referrer && referrer.email !== db.DEMO_DEALER_EMAIL) {
+        referredByDealerId = referrer.id;
+      }
+    }
     const info = db.createDealer({
       dealership_name: dealership_name.trim(),
       contact_name: contact_name.trim(),
@@ -120,6 +137,7 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       city: (city || '').trim(),
       state: (state || '').trim(),
       dealer_type,
+      referred_by_dealer_id: referredByDealerId,
       ein: einDigits.slice(0, 2) + '-' + einDigits.slice(2),
       legal_name: legal_name.trim(),
       dba: (dba || '').trim() || null,
@@ -131,6 +149,15 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       auction_access_id: (auction_access_id || '').trim() || null,
       ...dlFields,
     });
+    // Record the referral row (the reward-tracking record). Never let a
+    // referral failure break a signup — the dealer row is already saved.
+    if (referredByDealerId) {
+      try {
+        db.createReferral(referredByDealerId, info.lastInsertRowid);
+      } catch (err) {
+        console.error('[referral] could not record referral:', err.message);
+      }
+    }
     req.session.dealerId = info.lastInsertRowid;
     res.redirect('/dashboard');
   } catch (err) {

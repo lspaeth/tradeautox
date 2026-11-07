@@ -183,4 +183,24 @@
   <p class="muted small">Refunds: issue them in the <a href="https://dashboard.stripe.com/payments" target="_blank" rel="noopener">Stripe Dashboard → Payments</a>. Find the payment, click Refund. No code needed — this is handled natively by Stripe.</p>
 </section>
 
+<section class="panel">
+  <h2>Referrals (<%= referrals.length %>)</h2>
+  <p class="muted small">A referrer earns one free month ($599 credit on their next Stripe invoice) when a referred dealer finishes the 30-day trial and pays their first month. The credit is applied automatically by the Stripe webhook.</p>
+  <% if (typeof referrals === 'undefined' || !referrals.length) { %>
+    <p class="muted">No referrals yet.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Referrer</th><th>Referred dealer</th><th>Referred</th><th>Reward</th></tr>
+      <% referrals.forEach(r => { %>
+        <tr>
+          <td><%= r.referrer_name %> (ID <%= r.referrer_number || '—' %>)</td>
+          <td><%= r.referred_name %> (ID <%= r.referred_number || '—' %>)<br><span class="muted small"><%= r.referred_status %> · <%= r.referred_membership %></span></td>
+          <td><%= new Date(r.created_at + 'Z').toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) %></td>
+          <td><% if (r.status === 'earned') { %>Earned<% if (r.granted_at) { %> · <%= new Date(r.granted_at + 'Z').toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) %><% } %><% } else if (r.status === 'pending_grant') { %><strong>Needs attention</strong> — referred dealer paid, but the referrer has no Stripe customer to credit<% } else { %>Pending — referred dealer hasn&rsquo;t paid yet<% } %></td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+</section>
+
 <%- include('partials/footer') %>
