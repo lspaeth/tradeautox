@@ -23,7 +23,7 @@
 <section class="panel">
   <h2>New alerts</h2>
   <% notifications.forEach(n => { %>
-    <p><% if (n.kind === 'auction_alert' || n.kind === 'auction_won' || n.kind === 'auction_outbid') { %><span class="live-badge">LIVE</span> <% } %><%= n.message %><% if (n.ref_id) { %> <a href="/auctions/<%= n.ref_id %>">Open</a><% } %></p>
+    <p><% if (n.kind === 'auction_alert' || n.kind === 'auction_won' || n.kind === 'auction_outbid') { %><span class="live-badge">LIVE</span> <% } %><%= n.message %><% if (n.ref_id) { %> <a href="<%= n.kind === 'want_match' ? '/listings/' + n.ref_id : '/auctions/' + n.ref_id %>">Open</a><% } %></p>
   <% }) %>
 </section>
 <% } %>
@@ -149,6 +149,59 @@
           <td>
             <a class="btn btn-xs btn-ghost" href="/listings?search_type=id&amp;member_number=<%= p.member_number %>">View inventory</a>
             <form method="post" action="/dashboard/trade-partners/<%= p.id %>/remove" style="display:inline">
+              <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>Wants — cars you're hunting</h2>
+  <p class="muted small">Save a search and we'll ping you here and by email the moment a matching vehicle lists. Private — only you see your Wants.</p>
+  <form class="form" method="post" action="/dashboard/wants">
+    <div class="row">
+      <label>Make *
+        <input name="make" placeholder="e.g. Chevrolet" required>
+      </label>
+      <label>Model
+        <input name="model" placeholder="e.g. Silverado 1500">
+      </label>
+    </div>
+    <div class="row">
+      <label>Year from
+        <input name="year_min" inputmode="numeric" maxlength="4" placeholder="e.g. 2020">
+      </label>
+      <label>Year to
+        <input name="year_max" inputmode="numeric" maxlength="4" placeholder="e.g. 2024">
+      </label>
+      <label>Max price
+        <input name="max_price" inputmode="numeric" placeholder="e.g. 35000">
+      </label>
+      <label>Radius
+        <select name="radius_miles">
+          <option value="25">25 miles</option>
+          <option value="50" selected>50 miles</option>
+          <option value="100">100 miles</option>
+          <option value="250">250 miles</option>
+          <option value="">Anywhere</option>
+        </select>
+      </label>
+    </div>
+    <button class="btn btn-sm" type="submit">Save Want</button>
+  </form>
+  <% if (typeof wants === 'undefined' || !wants.length) { %>
+    <p class="muted">No Wants yet.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>Want</th><th></th></tr>
+      <% wants.forEach(w => { %>
+        <tr>
+          <td><%= w.label %></td>
+          <td>
+            <form method="post" action="/dashboard/wants/<%= w.id %>/remove" style="display:inline">
               <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
             </form>
           </td>

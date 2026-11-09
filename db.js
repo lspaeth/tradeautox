@@ -144,6 +144,22 @@ CREATE TABLE IF NOT EXISTS trade_partners (
   PRIMARY KEY (dealer_id, partner_id)
 );
 
+-- Wants (wish list, v1): a dealer saves a search — make, model, year range,
+-- max price, radius around their own ZIP — and gets pinged when a matching
+-- listing goes live. Wants are private: only the owning dealer ever sees
+-- them (no board display, no admin list in v1).
+CREATE TABLE IF NOT EXISTS wants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dealer_id INTEGER NOT NULL REFERENCES dealers(id) ON DELETE CASCADE,
+  make TEXT NOT NULL,
+  model TEXT,
+  year_min INTEGER,
+  year_max INTEGER,
+  max_price INTEGER,
+  radius_miles INTEGER, -- NULL = anywhere
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Referrals: one row per referred dealer. The referrer earns one free
 -- month ($599 credit) when the referred dealer completes the 30-day trial
 -- and their first charge succeeds. status: 'pending' (not paid yet) |
@@ -454,6 +470,29 @@ const listTradePartners = (dealerId) =>
     WHERE tp.dealer_id = ? AND d.status = 'approved'
     ORDER BY d.dealership_name
   `).all(dealerId);
+
+// ---- wants (wish list) ----
+const createWant = (dealerId, { make, model, yearMin, yearMax, maxPrice, radiusMiles }) =>
+  db.prepare(`INSERT INTO wants (dealer_id, make, model, year_min, year_max, max_price, radius_miles) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(dealerId, make, model || null, yearMin || null, yearMax || null, maxPrice || null, radiusMiles || null);
+
+const listWants = (dealerId) =>
+  db.prepare(`SELECT * FROM wants WHERE dealer_id = ? ORDER BY created_at DESC`).all(dealerId);
+
+const deleteWant = (dealerId, wantId) =>
+  db.prepare(`DELETE FROM wants WHERE dealer_id = ? AND id = ?`).run(dealerId, wantId);
+
+const countWants = (dealerId) =>
+  db.prepare(`SELECT COUNT(*) AS n FROM wants WHERE dealer_id = ?`).get(dealerId).n;
+
+// Every want with its owner's status, ZIP, and email — the matching pass.
+const listWantsWithDealers = () =>
+  db.prepare(`
+    SELECT w.*, d.zip AS dealer_zip, d.email AS dealer_email, d.contact_name,
+      d.status AS dealer_status, d.membership_status
+    FROM wants w JOIN dealers d ON d.id = w.dealer_id
+    ORDER BY w.created_at
+  `).all();
 
 // Stored /uploads/... paths belonging to a dealer (license photo, listing
 // photos + verification reports, auction photos) — collected before a delete
@@ -818,6 +857,7 @@ module.exports = {
   createReferral, getReferralByReferred, listReferralsByReferrer, listAllReferrals,
   markReferralEarned, markReferralPendingGrant,
   addTradePartner, removeTradePartner, listTradePartners,
+  createWant, listWants, deleteWant, countWants, listWantsWithDealers,
   createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
   createListing, getActiveListingByVin, getDealerListingByVin, addListingPhoto, getListing, getListingPhotos,
   getListingPhotoCounts, getAuctionPhotoCounts,

@@ -5,6 +5,7 @@ const { requireLogin, requireOwner, isOwnerSession, currentDealerUser, canSell, 
 const { stripeConfigured } = require('../lib/stripe');
 const { cleanZip, isValidZip, distanceMiles } = require('../lib/geo');
 const { daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
+const { wantLabel } = require('../lib/wants');
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ router.get('/', requireLogin, (req, res) => {
     myAuctions,
     liveNearMe,
     tradePartners: db.listTradePartners(dealer.id),
+    wants: db.listWants(dealer.id).map((w) => ({ ...w, label: wantLabel(w) })),
     referralLink,
     myReferrals,
     referralCounts,
@@ -166,6 +168,40 @@ router.post('/trade-partners', requireLogin, (req, res) => {
 router.post('/trade-partners/:partnerId/remove', requireLogin, (req, res) => {
   db.removeTradePartner(req.session.dealerId, req.params.partnerId);
   res.redirect('/dashboard?notice=' + encodeURIComponent('Trade partner removed.'));
+});
+
+// Save a Want (wish list): make + optional model, year range, max price,
+// radius around the dealer's own ZIP. Max 10 per dealer. When a matching
+// vehicle lists, the dealer gets an in-app alert + email; Wants are private
+// and never shown to anyone else.
+router.post('/wants', requireLogin, (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer) return res.redirect('/login');
+  const fail = (msg) => res.redirect('/dashboard?error=' + encodeURIComponent(msg));
+  const make = (req.body.make || '').trim();
+  const model = (req.body.model || '').trim();
+  const yearMin = parseInt(req.body.year_min, 10) || null;
+  const yearMax = parseInt(req.body.year_max, 10) || null;
+  const maxPrice = parseInt(String(req.body.max_price || '').replace(/[^0-9]/g, ''), 10) || null;
+  const radiusRaw = (req.body.radius_miles || '').trim();
+  const radiusMiles = radiusRaw === '' ? null
+    : ([25, 50, 100, 250].includes(Number(radiusRaw)) ? Number(radiusRaw) : null);
+  if (!make) return fail('Enter a make for your Want (e.g. Chevrolet).');
+  if (yearMin && (yearMin < 1900 || yearMin > 2100)) return fail('Enter a valid earliest year.');
+  if (yearMax && (yearMax < 1900 || yearMax > 2100)) return fail('Enter a valid latest year.');
+  if (yearMin && yearMax && yearMin > yearMax) return fail("The earliest year can't be after the latest year.");
+  if (maxPrice && maxPrice <= 0) return fail('Enter a valid max price.');
+  if (radiusRaw !== '' && radiusMiles == null) return fail('Pick a valid radius for your Want.');
+  if (db.countWants(dealer.id) >= 10) return fail('You already have 10 Wants — remove one before adding another.');
+  db.createWant(dealer.id, { make, model, yearMin, yearMax, maxPrice, radiusMiles });
+  res.redirect('/dashboard?notice=' + encodeURIComponent(
+    `Want saved — we'll ping you when a ${make}${model ? ' ' + model : ''} lists${radiusMiles ? ` within ${radiusMiles} miles` : ''}.`));
+});
+
+// Remove a Want.
+router.post('/wants/:id/remove', requireLogin, (req, res) => {
+  db.deleteWant(req.session.dealerId, req.params.id);
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Want removed.'));
 });
 
 module.exports = router;
