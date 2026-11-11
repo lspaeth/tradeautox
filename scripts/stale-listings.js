@@ -16,8 +16,12 @@ async function main() {
 
   for (const row of db.listStaleCandidates()) {
     const dealer = { contact_name: row.contact_name, email: row.dealer_email, dealership_name: row.dealership_name };
+    // Board-comp price suggestion (median of similar listed/sold vehicles).
+    // Null when there aren't enough comps, or the market is at/above the
+    // asking price — then the nudge goes out with no price line.
+    const suggestion = db.getSuggestedPrice(row);
     try {
-      const msg = staleNudgeEmail({ dealer, listing: row });
+      const msg = staleNudgeEmail({ dealer, listing: row, suggestion });
       await sendMail({ to: dealer.email, ...msg });
     } catch (err) {
       console.error(`[stale] nudge email to ${dealer.email} failed:`, err.message);

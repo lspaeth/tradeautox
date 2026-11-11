@@ -710,6 +710,48 @@ const markListingNudged = (id) =>
 const confirmListingAvailable = (id) =>
   db.prepare(`UPDATE listings SET last_confirmed_at = datetime('now'), stale_nudged_at = NULL WHERE id = ?`).run(id);
 
+// ---- board-comp price suggestion (stale-listing nudge) ----
+// Comparable board listings for a vehicle: same make + model, model year
+// within 2 of the listing's year, currently listed or already sold, from
+// approved dealers (active comps must also be paying members — a suspended
+// dealer's car isn't on the board). Sorted by price so the caller can take
+// the median.
+const listPriceComps = ({ make, model, year, excludeId }) =>
+  db.prepare(`
+    SELECT l.price, l.status, l.year FROM listings l JOIN dealers d ON d.id = l.dealer_id
+    WHERE l.id != ?
+      AND lower(l.make) = lower(?) AND lower(l.model) = lower(?)
+      AND l.year BETWEEN ? AND ?
+      AND l.status IN ('active', 'sold')
+      AND d.status = 'approved'
+      AND (l.status = 'sold' OR d.membership_status IN ('active', 'past_due'))
+    ORDER BY l.price
+  `).all(excludeId, make, model, year - 2, year + 2);
+
+// Suggested price for a stale listing, from board comps only. Returns null
+// when there aren't enough comps to say anything honest (fewer than 2), or
+// when the market median is at or above the asking price — a stale listing
+// priced under the market isn't a pricing problem, so the nudge goes out
+// without a price line.
+function getSuggestedPrice(listing) {
+  const comps = listPriceComps({
+    make: listing.make, model: listing.model, year: listing.year, excludeId: listing.id,
+  });
+  if (comps.length < 2) return null;
+  const prices = comps.map((c) => c.price).sort((a, b) => a - b);
+  const mid = Math.floor(prices.length / 2);
+  const median = prices.length % 2
+    ? prices[mid]
+    : Math.round((prices[mid - 1] + prices[mid]) / 2);
+  if (median >= listing.price) return null;
+  return {
+    price: median,
+    compCount: comps.length,
+    yearMin: listing.year - 2,
+    yearMax: listing.year + 2,
+  };
+}
+
 // ---- password resets (admin-assisted: dealer requests, admin issues temp password) ----
 const createPasswordReset = (dealerId) =>
   db.prepare(`INSERT INTO password_resets (dealer_id) VALUES (?)`).run(dealerId);
@@ -1018,7 +1060,7 @@ module.exports = {
   logActivity, listRecentActivity,
   setDealerTermsVersion, setDealerEmailVerified, setEmailVerifyToken, getDealerByVerifyToken,
   STALE_AFTER_DAYS, EXPIRE_AFTER_NUDGE_DAYS, listStaleCandidates, listNudgedExpired,
-  markListingNudged, confirmListingAvailable,
+  markListingNudged, confirmListingAvailable, listPriceComps, getSuggestedPrice,
   createReferral, getReferralByReferred, listReferralsByReferrer, listAllReferrals,
   markReferralEarned, markReferralPendingGrant,
   addTradePartner, removeTradePartner, listTradePartners,
