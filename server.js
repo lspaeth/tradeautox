@@ -38,7 +38,7 @@ app.use(session({
   cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true },
 }));
 
-// Idle auto-logout: 5 minutes with no activity ends the session (the
+// Idle auto-logout: 10 minutes with no activity ends the session (the
 // browser timer in the footer enforces the same limit visibly).
 app.use(idleTimeout);
 

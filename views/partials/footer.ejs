@@ -46,7 +46,7 @@
 <% if (currentDealer || isAdmin) { %>
 <script>
 (function () {
-  // Idle auto-logout: 5 minutes with no activity signs the session out.
+  // Idle auto-logout: 10 minutes with no activity signs the session out.
   // The server enforces the same limit (lib/idle.js); this just makes it
   // visible while the user is staring at a page instead of waiting for
   // their next click. Admin-only sessions go back to the admin login.

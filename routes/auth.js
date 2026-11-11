@@ -4,6 +4,7 @@ const fs = require('fs');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireLogin } = require('../lib/auth');
+const { idleNotice } = require('../lib/idle');
 const { parseAamva, evaluateScan } = require('../lib/aamva');
 
 const router = express.Router();
@@ -220,7 +221,7 @@ router.get('/logout', (req, res) => {
   const idle = req.query.idle;
   req.session.destroy(() => {
     // Idle auto-logout lands back on the login page with the reason shown.
-    if (idle) return res.redirect('/login?notice=' + encodeURIComponent('You were signed out after 5 minutes with no activity.'));
+    if (idle) return res.redirect('/login?notice=' + encodeURIComponent(idleNotice()));
     res.redirect('/');
   });
 });
