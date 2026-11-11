@@ -6,6 +6,7 @@ const fs = require('fs');
 
 const db = require('./db'); // initializes schema
 const billing = require('./routes/billing');
+const { idleTimeout, IDLE_TIMEOUT_MS } = require('./lib/idle');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,10 +38,17 @@ app.use(session({
   cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true },
 }));
 
+// Idle auto-logout: 5 minutes with no activity ends the session (the
+// browser timer in the footer enforces the same limit visibly).
+app.use(idleTimeout);
+
 // Make auth state available to all views
 app.use((req, res, next) => {
   res.locals.currentDealer = req.session.dealerId ? db.getDealerById(req.session.dealerId) : null;
   res.locals.isAdmin = !!req.session.admin;
+  // Idle auto-logout limit, so the footer timer uses the same number as
+  // the server-side enforcement in lib/idle.js.
+  res.locals.idleTimeoutMs = IDLE_TIMEOUT_MS;
   // Employee access level (owner/admin = both). Views hide the buttons the
   // session can't use; the server-side guards in lib/auth are the real check.
   const { canSell, canBuy } = require('./lib/auth');

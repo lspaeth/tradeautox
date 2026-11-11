@@ -27,6 +27,7 @@ router.post('/login', async (req, res) => {
   if (email === adminEmail && password === adminPassword) {
     req.session.admin = true;
     req.session.admin_email = adminEmail;
+    req.session.lastActivity = Date.now();
     return res.redirect('/admin');
   }
   // Extra admin logins (invited, each with their own credentials).
@@ -34,6 +35,7 @@ router.post('/login', async (req, res) => {
   if (extra && await bcrypt.compare(password || '', extra.password_hash)) {
     req.session.admin = true;
     req.session.admin_email = extra.email;
+    req.session.lastActivity = Date.now();
     return res.redirect('/admin');
   }
   res.status(401).render('admin-login', { error: 'Invalid admin credentials.' });

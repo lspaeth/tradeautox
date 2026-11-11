@@ -185,6 +185,7 @@ router.post('/login', async (req, res) => {
     }
     req.session.dealerId = dealer.id;
     req.session.dealerRole = 'owner';
+    req.session.lastActivity = Date.now();
     if (dealer.must_change_password) {
       return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
     }
@@ -205,6 +206,7 @@ router.post('/login', async (req, res) => {
       req.session.dealerId = org.id;
       req.session.dealerUserId = user.id;
       req.session.dealerRole = 'user';
+      req.session.lastActivity = Date.now();
       if (user.must_change_password) {
         return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
       }
@@ -215,7 +217,12 @@ router.post('/login', async (req, res) => {
 });
 
 router.get('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/'));
+  const idle = req.query.idle;
+  req.session.destroy(() => {
+    // Idle auto-logout lands back on the login page with the reason shown.
+    if (idle) return res.redirect('/login?notice=' + encodeURIComponent('You were signed out after 5 minutes with no activity.'));
+    res.redirect('/');
+  });
 });
 router.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));

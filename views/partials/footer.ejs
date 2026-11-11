@@ -43,5 +43,37 @@
   });
 })();
 </script>
+<% if (currentDealer || isAdmin) { %>
+<script>
+(function () {
+  // Idle auto-logout: 5 minutes with no activity signs the session out.
+  // The server enforces the same limit (lib/idle.js); this just makes it
+  // visible while the user is staring at a page instead of waiting for
+  // their next click. Admin-only sessions go back to the admin login.
+  var IDLE_MS = <%= idleTimeoutMs %>;
+  var LOGOUT_URL = '<%= (isAdmin && !currentDealer) ? "/admin/logout?idle=1" : "/logout?idle=1" %>';
+  var timer = null;
+  function reset() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { window.location.href = LOGOUT_URL; }, IDLE_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(function (ev) {
+    window.addEventListener(ev, reset, { passive: true });
+  });
+  // Background polls (the live auction room refreshing every 3s) count
+  // as activity too — a dealer watching bids is not idle. Only a
+  // successful response resets the clock; a 401 means the server already
+  // ended the session, so the timer keeps running toward logout.
+  var _fetch = window.fetch;
+  window.fetch = function () {
+    return _fetch.apply(this, arguments).then(function (res) {
+      if (res.ok) reset();
+      return res;
+    });
+  };
+  reset();
+})();
+</script>
+<% } %>
 </body>
 </html>

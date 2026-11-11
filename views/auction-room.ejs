@@ -125,6 +125,10 @@
     setInterval(async function () {
       try {
         var res = await fetch('/auctions/<%= auction.id %>/state');
+        // Idle auto-logout: the server ends the session after 5 quiet
+        // minutes and answers fetches with 401 — send the watcher to the
+        // login page right away instead of polling a dead session.
+        if (res.status === 401) { location.href = '/login?notice=' + encodeURIComponent('You were signed out after 5 minutes with no activity.'); return; }
         if (!res.ok) return;
         var data = await res.json();
         endsAt = new Date(data.endsAt).getTime();
