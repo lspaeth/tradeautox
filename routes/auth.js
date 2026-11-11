@@ -1,10 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const fs = require('fs');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireLogin } = require('../lib/auth');
 const { idleNotice } = require('../lib/idle');
+const { TERMS_VERSION, TERMS_WHAT_CHANGED } = require('../lib/terms');
+const { lockoutMessage } = require('../lib/lockout');
+const activity = require('../lib/activity');
 const { parseAamva, evaluateScan } = require('../lib/aamva');
 
 const router = express.Router();
@@ -133,6 +137,8 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
       license_number: license_number.trim(),
       license_photo_path: req.file ? `/uploads/${req.file.filename}` : null,
       terms_accepted_at: new Date().toISOString(),
+      terms_version: TERMS_VERSION,
+      email_verified: 0,
       zip: cleanZip(zip),
       address: (address || '').trim(),
       city: (city || '').trim(),
@@ -159,12 +165,66 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
         console.error('[referral] could not record referral:', err.message);
       }
     }
-    req.session.dealerId = info.lastInsertRowid;
-    res.redirect('/dashboard');
+    // ---- Email verification: the dealer proves the address works before
+    // they can sign in. No auto-login here — the link in the email signs
+    // them in. Existing dealers are grandfathered verified (see db.js).
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const verifyExpires = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    db.setEmailVerifyToken(info.lastInsertRowid, verifyToken, verifyExpires);
+    const newDealer = db.getDealerById(info.lastInsertRowid);
+    const { sendMail, verificationEmail } = require('../lib/mail');
+    const msg = verificationEmail(newDealer, verifyToken);
+    sendMail({ to: newDealer.email, ...msg }).catch((err) =>
+      console.error('[verify] verification email failed:', err.message));
+    res.render('verify-email-sent', { email: newDealer.email });
   } catch (err) {
     console.error(err);
     res.status(500).render('signup', { error: 'Something went wrong. Please try again.', form_ts: Date.now() });
   }
+});
+
+// ---- email verification ----
+// The link from the signup email. Verifies the address, then signs the
+// dealer straight in — their application is in the approval queue.
+router.get('/verify-email', (req, res) => {
+  const token = String(req.query.token || '');
+  const dealer = token ? db.getDealerByVerifyToken(token) : null;
+  if (!dealer || !dealer.email_verify_expires || new Date(dealer.email_verify_expires).getTime() <= Date.now()) {
+    return res.status(400).render('resend-verification', {
+      error: 'That verification link is expired or already used — request a new one below.',
+      notice: null,
+    });
+  }
+  db.setDealerEmailVerified(dealer.id);
+  activity.log('email_verified', { dealerId: dealer.id, email: dealer.email });
+  req.session.dealerId = dealer.id;
+  req.session.dealerRole = 'owner';
+  req.session.lastActivity = Date.now();
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Email verified — your application is in the approval queue. We\u2019ll email you when it\u2019s approved.'));
+});
+
+// Request a fresh verification link (expired link, or the first email
+// never arrived). Never reveals whether the email has an account.
+router.get('/resend-verification', (req, res) => {
+  res.render('resend-verification', { error: null, notice: null });
+});
+
+router.post('/resend-verification', (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const dealer = email ? db.getDealerByEmail(email) : null;
+  if (dealer && !dealer.email_verified) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    db.setEmailVerifyToken(dealer.id, token, expires);
+    const { sendMail, verificationEmail } = require('../lib/mail');
+    const msg = verificationEmail(dealer, token);
+    sendMail({ to: dealer.email, ...msg }).catch((err) =>
+      console.error('[verify] resend failed:', err.message));
+  }
+  res.render('resend-verification', {
+    error: null,
+    notice: 'If that email has an unverified TradeAutoX application, a new verification link is on its way.',
+  });
 });
 
 router.get('/login', (req, res) => {
@@ -175,6 +235,13 @@ router.get('/login', (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   const cleanEmail = (email || '').trim().toLowerCase();
+  // Lockout first: a locked account never burns CPU on password guesses.
+  // The message never reveals whether the email has an account.
+  const lockedUntil = db.isLoginLocked(cleanEmail, 'dealer');
+  if (lockedUntil) {
+    return res.status(429).render('login', { error: lockoutMessage(lockedUntil), notice: null });
+  }
+  const fail = () => res.status(401).render('login', { error: 'Invalid email or password.', notice: null });
   // Owner login first — the dealers table is unchanged by employee logins.
   const dealer = db.getDealerByEmail(cleanEmail);
   if (dealer && (await bcrypt.compare(password || '', dealer.password_hash))) {
@@ -184,13 +251,28 @@ router.post('/login', async (req, res) => {
     if (dealer.status === 'suspended') {
       return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
     }
+    if (!dealer.email_verified) {
+      return res.status(403).render('login', { error: 'Please verify your email first — we sent a link to ' + dealer.email + '. Didn\u2019t get it? Request a new one below.', notice: null });
+    }
+    db.clearLoginAttempts(cleanEmail, 'dealer');
+    activity.log('dealer_login', { dealerId: dealer.id, email: dealer.email });
     req.session.dealerId = dealer.id;
     req.session.dealerRole = 'owner';
     req.session.lastActivity = Date.now();
     if (dealer.must_change_password) {
       return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
     }
+    if (dealer.terms_version !== TERMS_VERSION) {
+      return res.redirect('/terms/accept');
+    }
     return res.redirect('/dashboard');
+  }
+  if (dealer) {
+    // Real dealer, wrong password — counts toward the lockout.
+    const r = db.recordLoginFailure(cleanEmail, 'dealer');
+    activity.log('dealer_login_failed', { dealerId: dealer.id, email: cleanEmail });
+    if (r.newlyLocked) activity.log('dealer_login_locked', { dealerId: dealer.id, email: cleanEmail });
+    return fail();
   }
   // Employee login: same dealership, own email + password. Only when the
   // owner switched employee logins on, and only while the employee is active.
@@ -204,6 +286,11 @@ router.post('/login', async (req, res) => {
       if (org.status === 'suspended') {
         return res.status(403).render('login', { error: 'This account has been suspended. Contact support.', notice: null });
       }
+      if (!org.email_verified) {
+        return res.status(403).render('login', { error: 'Please verify your email first — the dealership\u2019s email needs confirming before anyone can sign in.', notice: null });
+      }
+      db.clearLoginAttempts(cleanEmail, 'dealer');
+      activity.log('dealer_login', { dealerId: org.id, email: cleanEmail, detail: `Employee ${user.name} signed in` });
       req.session.dealerId = org.id;
       req.session.dealerUserId = user.id;
       req.session.dealerRole = 'user';
@@ -211,10 +298,40 @@ router.post('/login', async (req, res) => {
       if (user.must_change_password) {
         return res.redirect('/change-password?notice=' + encodeURIComponent('You are using a temporary password. Please set a new one.'));
       }
+      if (org.terms_version !== TERMS_VERSION) {
+        return res.redirect('/terms/accept');
+      }
       return res.redirect('/dashboard');
     }
   }
-  return res.status(401).render('login', { error: 'Invalid email or password.', notice: null });
+  if (user && user.active) {
+    // Real employee, wrong password — counts toward the lockout.
+    const r = db.recordLoginFailure(cleanEmail, 'dealer');
+    activity.log('dealer_login_failed', { dealerId: user.dealer_id, email: cleanEmail });
+    if (r.newlyLocked) activity.log('dealer_login_locked', { dealerId: user.dealer_id, email: cleanEmail });
+  }
+  // Unknown email: the same message as a wrong password — never reveal
+  // whether the email has an account.
+  return fail();
+});
+
+// ---- updated Terms acceptance ----
+// A dealer whose recorded Terms version is older than the current one
+// lands here on login (and on any later page load, via the middleware in
+// lib/auth). One tap records the acceptance with a timestamp.
+router.get('/terms/accept', requireLogin, (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer) return res.redirect('/login');
+  if (dealer.terms_version === TERMS_VERSION) return res.redirect('/dashboard');
+  res.render('terms-accept', { dealer, whatChanged: TERMS_WHAT_CHANGED, termsVersion: TERMS_VERSION });
+});
+
+router.post('/terms/accept', requireLogin, (req, res) => {
+  const dealer = db.getDealerById(req.session.dealerId);
+  if (!dealer) return res.redirect('/login');
+  db.setDealerTermsVersion(dealer.id, TERMS_VERSION);
+  activity.log('terms_accepted', { dealerId: dealer.id, email: dealer.email, detail: `Accepted Terms version ${TERMS_VERSION}` });
+  res.redirect('/dashboard?notice=' + encodeURIComponent('Thanks — you\u2019re up to date on the Terms.'));
 });
 
 router.get('/logout', (req, res) => {
@@ -274,6 +391,7 @@ router.post('/change-password', requireLogin, async (req, res) => {
     }
     db.setDealerUserPassword(user.id, await bcrypt.hash(new_password, 12));
     db.setDealerUserMustChange(user.id, 0);
+    activity.log('password_changed', { dealerId: user.dealer_id, email: user.email });
     return res.redirect('/dashboard?notice=' + encodeURIComponent('Password updated.'));
   }
   const dealer = db.getDealerById(req.session.dealerId);
@@ -282,6 +400,7 @@ router.post('/change-password', requireLogin, async (req, res) => {
   }
   db.setDealerPassword(dealer.id, await bcrypt.hash(new_password, 12));
   db.setMustChangePassword(dealer.id, 0);
+  activity.log('password_changed', { dealerId: dealer.id, email: dealer.email });
   res.redirect('/dashboard?notice=' + encodeURIComponent('Password updated.'));
 });
 

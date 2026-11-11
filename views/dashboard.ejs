@@ -23,7 +23,7 @@
 <section class="panel">
   <h2>New alerts</h2>
   <% notifications.forEach(n => { %>
-    <p><% if (n.kind === 'auction_alert' || n.kind === 'auction_won' || n.kind === 'auction_outbid') { %><span class="live-badge">LIVE</span> <% } %><%= n.message %><% if (n.ref_id) { %> <a href="<%= n.kind === 'want_match' ? '/listings/' + n.ref_id : '/auctions/' + n.ref_id %>">Open</a><% } %></p>
+    <p><% if (n.kind === 'auction_alert' || n.kind === 'auction_won' || n.kind === 'auction_outbid') { %><span class="live-badge">LIVE</span> <% } %><%= n.message %><% if (n.ref_id) { %> <a href="<%= ['want_match', 'stale_nudge', 'stale_expired'].includes(n.kind) ? '/listings/' + n.ref_id : '/auctions/' + n.ref_id %>">Open</a><% } %></p>
   <% }) %>
 </section>
 <% } %>
@@ -310,13 +310,18 @@
         <tr>
           <td><% if (l.status === 'draft') { %><a href="/listings/<%= l.id %>/add-photos"><%= l.year %> <%= l.make %> <%= l.model %></a><% } else { %><a href="/listings/<%= l.id %>"><%= l.year %> <%= l.make %> <%= l.model %></a><% } %></td>
           <td><%= fmtMoney(l.price) %></td>
-          <td><% if (l.status === 'draft') { %>Draft — <%= l.photoCounts.total %>/15 photos (<%= l.photoCounts.exterior %> exterior, <%= l.photoCounts.interior %> interior)<% } else { %><%= l.status %><% } %><% if (l.pendingSale) { %> · Sale pending (<%= l.pendingSale %><% if (l.pendingBuyer) { %> — <%= l.pendingBuyer %><% } %><% if (l.pendingDays != null) { %> — <%= l.pendingDays === 0 ? 'today' : l.pendingDays + (l.pendingDays === 1 ? ' day' : ' days') %><% } %>)<% } %></td>
+          <td><% if (l.status === 'draft') { %>Draft — <%= l.photoCounts.total %>/15 photos (<%= l.photoCounts.exterior %> exterior, <%= l.photoCounts.interior %> interior)<% } else { %><%= l.status %><% } %><% if (l.pendingSale) { %> · Sale pending (<%= l.pendingSale %><% if (l.pendingBuyer) { %> — <%= l.pendingBuyer %><% } %><% if (l.pendingDays != null) { %> — <%= l.pendingDays === 0 ? 'today' : l.pendingDays + (l.pendingDays === 1 ? ' day' : ' days') %><% } %>)<% } %><% if (l.status === 'active' && l.staleNudged) { %> · <span class="pill pill-pending">Confirm still available</span><% } %></td>
           <td><%= l.daysOnSite || '—' %></td>
           <td>
             <% if (typeof canSell === 'undefined' || canSell) { %>
             <% if (l.status === 'draft') { %>
               <a class="btn btn-xs" href="/listings/<%= l.id %>/add-photos">Add photos</a>
             <% } else if (l.status === 'active') { %>
+              <% if (l.staleNudged) { %>
+              <form method="post" action="/listings/<%= l.id %>/confirm-available" style="display:inline">
+                <button class="btn btn-xs" type="submit">Still available</button>
+              </form>
+              <% } %>
               <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
                 <input type="hidden" name="status" value="sold">
                 <button class="btn btn-xs" type="submit">Mark sold</button>
@@ -325,6 +330,11 @@
                 <input type="hidden" name="status" value="removed">
                 <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
               </form>
+            <% } else if (l.status === 'expired') { %>
+              <form method="post" action="/listings/<%= l.id %>/relist" style="display:inline">
+                <button class="btn btn-xs" type="submit">Relist</button>
+              </form>
+              <span class="muted small">Hidden from the board</span>
             <% } %>
             <% } %>
           </td>

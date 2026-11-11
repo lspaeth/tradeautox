@@ -6,6 +6,14 @@
 
 <% if (notice) { %><p class="alert ok"><%= notice %></p><% } %>
 <% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<% if (canManage && (typeof staleNudged !== 'undefined' && staleNudged)) { %>
+<div class="alert warn">
+  <strong>This listing is over 30 days old.</strong> We emailed you to check whether it's still available. If it is, confirm below — otherwise mark it sold or remove it. If we don't hear from you, it will be hidden from the board.
+  <form method="post" action="/listings/<%= listing.id %>/confirm-available" style="margin-top:8px">
+    <button class="btn btn-sm" type="submit">Yes, still available</button>
+  </form>
+</div>
+<% } %>
 
 <h1><%= listing.year %> <%= listing.make %> <%= listing.model %></h1>
 <% if (listing.verification_report) { %>

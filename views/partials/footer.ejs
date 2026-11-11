@@ -44,17 +44,48 @@
 })();
 </script>
 <% if (currentDealer || isAdmin) { %>
+<div id="idle-banner" class="idle-banner" hidden>
+  <span>You'll be signed out in <strong><span id="idle-count">60</span> seconds</strong> for inactivity.</span>
+  <button id="idle-stay" class="btn btn-sm" type="button">Stay signed in</button>
+  <button id="idle-signout" class="btn btn-sm btn-ghost" type="button">Sign out now</button>
+</div>
 <script>
 (function () {
   // Idle auto-logout: 10 minutes with no activity signs the session out.
   // The server enforces the same limit (lib/idle.js); this just makes it
   // visible while the user is staring at a page instead of waiting for
   // their next click. Admin-only sessions go back to the admin login.
+  // A banner warns 60 seconds before the sign-out, with a "Stay signed
+  // in" button that pings the server — any authenticated request refreshes
+  // the idle clock, so one tap buys another 10 minutes.
   var IDLE_MS = <%= idleTimeoutMs %>;
+  var WARN_MS = 60000;
   var LOGOUT_URL = '<%= (isAdmin && !currentDealer) ? "/admin/logout?idle=1" : "/logout?idle=1" %>';
   var timer = null;
+  var warnTimer = null;
+  var countdown = null;
+  var banner = document.getElementById('idle-banner');
+  var countEl = document.getElementById('idle-count');
+  function hideBanner() {
+    if (banner) banner.hidden = true;
+    if (countdown) { clearInterval(countdown); countdown = null; }
+  }
+  function showBanner() {
+    if (!banner) return;
+    var remaining = Math.ceil(WARN_MS / 1000);
+    countEl.textContent = remaining;
+    banner.hidden = false;
+    countdown = setInterval(function () {
+      remaining -= 1;
+      if (remaining <= 0) { clearInterval(countdown); countdown = null; return; }
+      countEl.textContent = remaining;
+    }, 1000);
+  }
   function reset() {
     if (timer) clearTimeout(timer);
+    if (warnTimer) clearTimeout(warnTimer);
+    hideBanner();
+    warnTimer = setTimeout(showBanner, Math.max(0, IDLE_MS - WARN_MS));
     timer = setTimeout(function () { window.location.href = LOGOUT_URL; }, IDLE_MS);
   }
   ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(function (ev) {
@@ -71,6 +102,15 @@
       return res;
     });
   };
+  var stayBtn = document.getElementById('idle-stay');
+  if (stayBtn) stayBtn.addEventListener('click', function () {
+    fetch('/ping').catch(function () {});
+    reset();
+  });
+  var outBtn = document.getElementById('idle-signout');
+  if (outBtn) outBtn.addEventListener('click', function () {
+    window.location.href = LOGOUT_URL;
+  });
   reset();
 })();
 </script>

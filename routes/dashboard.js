@@ -20,6 +20,7 @@ router.get('/', requireLogin, (req, res) => {
         ...l,
         photoCounts: db.getListingPhotoCounts(l.id),
         daysOnSite: daysOnSiteLabel(l.created_at),
+        staleNudged: !!l.stale_nudged_at,
         pendingSale: intent ? (PAYMENT_METHODS[intent.method] || intent.method) : null,
         pendingBuyer: intent ? intent.buyer_name : null,
         pendingDays: intent ? Math.max(0, Math.floor((Date.now() - new Date(intent.created_at + 'Z').getTime()) / 86400000)) : null,

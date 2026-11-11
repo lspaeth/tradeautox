@@ -29,7 +29,7 @@
       <tr><th>Dealership</th><th>Contact</th><th>License #</th><th>License photo</th><th>Verification</th><th>Driver's license check</th><th>Applied</th><th></th></tr>
       <% pending.forEach(d => { %>
         <tr>
-          <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span></td>
+          <td><%= d.dealership_name %><br><span class="muted small"><%= d.email %><% if (d.phone) { %> · <%= d.phone %><% } %></span><% if (!d.email_verified) { %><br><span class="pill pill-pending">Email not verified</span><% } %></td>
           <td><%= d.contact_name %></td>
           <td><%= d.license_number %></td>
           <td><% if (d.license_photo_path) { %><a href="<%= d.license_photo_path %>" target="_blank" rel="noopener">View</a><% } else { %><span class="muted">—</span><% } %></td>
@@ -197,6 +197,25 @@
           <td><%= r.referred_name %> (ID <%= r.referred_number || '—' %>)<br><span class="muted small"><%= r.referred_status %> · <%= r.referred_membership %></span></td>
           <td><%= new Date(r.created_at + 'Z').toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) %></td>
           <td><% if (r.status === 'earned') { %>Earned<% if (r.granted_at) { %> · <%= new Date(r.granted_at + 'Z').toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' }) %><% } %><% } else if (r.status === 'pending_grant') { %><strong>Needs attention</strong> — referred dealer paid, but the referrer has no Stripe customer to credit<% } else { %>Pending — referred dealer hasn&rsquo;t paid yet<% } %></td>
+        </tr>
+      <% }) %>
+    </table></div>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>Recent activity</h2>
+  <p class="muted small">Sign-ins (good and bad), password changes, Terms acceptances, and admin actions — newest first.</p>
+  <% if (!activity.length) { %>
+    <p class="muted">Nothing recorded yet.</p>
+  <% } else { %>
+    <div class="table-scroll"><table class="table">
+      <tr><th>When</th><th>What</th><th>Who</th></tr>
+      <% activity.forEach(a => { %>
+        <tr>
+          <td class="small"><%= a.created_at %></td>
+          <td><%= a.label %><% if (a.detail) { %><br><span class="muted small"><%= a.detail %></span><% } %></td>
+          <td class="small"><%= a.admin_email || a.email || (a.dealer_id ? 'Dealer #' + a.dealer_id : '—') %></td>
         </tr>
       <% }) %>
     </table></div>

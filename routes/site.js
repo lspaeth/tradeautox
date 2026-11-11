@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// /version answers with no-store so it can never be mistaken for a cached page.
+// /ping answers with no-store so it can never be mistaken for a cached page.
 // The commit comes from Railway, which injects RAILWAY_GIT_COMMIT_SHA into every
 // deployment; server.js copies it into app.locals.buildCommit.
 router.get('/version', (req, res) => {
@@ -12,6 +12,14 @@ router.get('/version', (req, res) => {
     commit: req.app.locals.buildCommit || 'unknown',
     branch: process.env.RAILWAY_GIT_BRANCH || null,
   });
+});
+
+// Tiny heartbeat for the idle-warning banner's "Stay signed in" button.
+// Any authenticated request refreshes the idle clock (see lib/idle.js),
+// so this one call keeps the session alive for another 10 minutes.
+router.get('/ping', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true });
 });
 
 router.get('/', (req, res) => {

@@ -383,6 +383,7 @@ router.get('/:id', requireMemberOrAdmin, (req, res) => {
   const viewerIsBuyer = !!(req.session.dealerId && intent && intent.buyer_dealer_id === req.session.dealerId);
   res.render('listing-detail', {
     listing, photos, canManage, intent, viewerIsBuyer,
+    staleNudged: !!listing.stale_nudged_at,
     notice: req.query.notice || null,
     error: req.query.error || null,
   });
@@ -449,6 +450,25 @@ router.post('/:id/status', requireMember, requireSell, (req, res) => {
   if (!['sold', 'removed'].includes(status)) return res.redirect('/dashboard');
   db.setListingStatus(req.params.id, req.dealer.id, status);
   res.redirect('/dashboard');
+});
+
+// Seller confirms the car is still available — restarts the 30-day stale
+// clock (and clears a nudge). Owner only; buy-only logins can't do it.
+router.post('/:id/confirm-available', requireMember, requireSell, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  db.confirmListingAvailable(listing.id);
+  res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Thanks — confirmed still available. The listing stays live.'));
+});
+
+// Put a hidden (expired) listing back on the board. Owner only.
+router.post('/:id/relist', requireMember, requireSell, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  if (listing.status !== 'expired') return res.redirect(`/listings/${listing.id}`);
+  db.setListingStatus(listing.id, req.dealer.id, 'active');
+  db.confirmListingAvailable(listing.id);
+  res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Back on the board — your listing is live again.'));
 });
 
 module.exports = router;

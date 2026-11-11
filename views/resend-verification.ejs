@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+
+<h1>Resend verification email</h1>
+
+<% if (error) { %><p class="alert error"><%= error %></p><% } %>
+<% if (notice) { %><p class="alert ok"><%= notice %></p><% } %>
+
+<form class="form" method="post" action="/resend-verification">
+  <label>Email
+    <input type="email" name="email" required>
+  </label>
+  <button class="btn" type="submit">Send a new link</button>
+</form>
+<p class="muted"><a href="/login">Back to login</a></p>
+
+<%- include('partials/footer') %>

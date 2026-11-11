@@ -8,6 +8,8 @@ const upload = require('../lib/upload');
 const { requireAdmin } = require('../lib/auth');
 const { createListingFromRequest } = require('../lib/listings');
 const { getStripe, stripeConfigured } = require('../lib/stripe');
+const { lockoutMessage } = require('../lib/lockout');
+const activity = require('../lib/activity');
 
 const router = express.Router();
 
@@ -23,20 +25,36 @@ router.post('/login', async (req, res) => {
   if (!adminEmail || !adminPassword) {
     return res.status(500).render('admin-login', { error: 'Admin credentials are not configured on the server.' });
   }
+  const cleanEmail = String(email || '').toLowerCase().trim();
+  // Lockout first: the same 5-tries / 15-minute rule as dealer logins.
+  const lockedUntil = db.isLoginLocked(cleanEmail, 'admin');
+  if (lockedUntil) {
+    return res.status(429).render('admin-login', { error: lockoutMessage(lockedUntil) });
+  }
   // Owner login (env credentials) — behavior unchanged.
   if (email === adminEmail && password === adminPassword) {
+    db.clearLoginAttempts(cleanEmail, 'admin');
+    activity.log('admin_login', { adminEmail: cleanEmail });
     req.session.admin = true;
     req.session.admin_email = adminEmail;
     req.session.lastActivity = Date.now();
     return res.redirect('/admin');
   }
   // Extra admin logins (invited, each with their own credentials).
-  const extra = email ? db.getAdminByEmail(String(email).toLowerCase().trim()) : null;
+  const extra = email ? db.getAdminByEmail(cleanEmail) : null;
   if (extra && await bcrypt.compare(password || '', extra.password_hash)) {
+    db.clearLoginAttempts(cleanEmail, 'admin');
+    activity.log('admin_login', { adminEmail: extra.email });
     req.session.admin = true;
     req.session.admin_email = extra.email;
     req.session.lastActivity = Date.now();
     return res.redirect('/admin');
+  }
+  // Wrong password for a real admin account — counts toward the lockout.
+  if (cleanEmail === String(adminEmail).toLowerCase() || extra) {
+    const r = db.recordLoginFailure(cleanEmail, 'admin');
+    activity.log('admin_login_failed', { adminEmail: cleanEmail });
+    if (r.newlyLocked) activity.log('admin_login_locked', { adminEmail: cleanEmail });
   }
   res.status(401).render('admin-login', { error: 'Invalid admin credentials.' });
 });
@@ -138,6 +156,7 @@ router.get('/', requireAdmin, (req, res) => {
     referrals: db.listAllReferrals(),
     adminEmail: req.session.admin_email || null,
     ownerEmail: process.env.ADMIN_EMAIL || null,
+    activity: db.listRecentActivity(50).map((a) => ({ ...a, label: activity.label(a.kind) })),
   });
 });
 
@@ -147,6 +166,7 @@ router.post('/invites', requireAdmin, (req, res) => {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   db.createAdminInvite(token, expiresAt, req.session.admin_email || null);
+  activity.log('admin_invite_created', { adminEmail: req.session.admin_email || null });
   const baseUrl = (process.env.BASE_URL || 'https://www.tradeautox.com').replace(/\/$/, '');
   res.render('admin-invite-created', { link: `${baseUrl}/admin/setup/${token}`, expiresAt });
 });
@@ -164,6 +184,7 @@ router.post('/admins/:id/remove', requireAdmin, (req, res) => {
   if (!target) return res.redirect('/admin');
   if (target.email === req.session.admin_email) return res.redirect('/admin');
   db.removeAdmin(target.id);
+  activity.log('admin_removed', { adminEmail: req.session.admin_email || null, detail: target.email });
   res.redirect('/admin');
 });
 
@@ -175,6 +196,7 @@ router.post('/dealers/:id/approve', requireAdmin, (req, res) => {
   // Welcome email — fire and forget; approval must not fail if email does.
   const dealer = db.getDealerById(req.params.id);
   if (dealer) {
+    activity.log('dealer_approved', { dealerId: dealer.id, adminEmail: req.session.admin_email || null, detail: `${dealer.dealership_name} (ID ${dealer.member_number || '—'})` });
     const { sendMail, welcomeEmail } = require('../lib/mail');
     const msg = welcomeEmail(dealer);
     sendMail({ to: dealer.email, ...msg }).catch((err) =>
@@ -185,6 +207,7 @@ router.post('/dealers/:id/approve', requireAdmin, (req, res) => {
 
 router.post('/dealers/:id/reject', requireAdmin, (req, res) => {
   db.setDealerStatus(req.params.id, 'rejected');
+  activity.log('dealer_rejected', { dealerId: Number(req.params.id), adminEmail: req.session.admin_email || null });
   res.redirect('/admin');
 });
 
@@ -227,6 +250,7 @@ router.post('/dealers/:id/suspend', requireAdmin, async (req, res) => {
   }
 
   db.setDealerStatus(dealer.id, 'suspended');
+  activity.log('dealer_suspended', { dealerId: dealer.id, adminEmail: req.session.admin_email || null, detail: dealer.dealership_name });
   res.redirect('/admin');
 });
 
@@ -259,6 +283,7 @@ router.post('/dealers/:id/reactivate', requireAdmin, async (req, res) => {
 
   db.setDealerStatus(dealer.id, 'approved');
   db.assignMemberNumber(dealer.id); // idempotent — a suspended dealer keeps its original ID
+  activity.log('dealer_reactivated', { dealerId: dealer.id, adminEmail: req.session.admin_email || null, detail: dealer.dealership_name });
   res.redirect('/admin');
 });
 
@@ -291,6 +316,7 @@ router.post('/dealers/:id/remove', requireAdmin, async (req, res) => {
   const uploadsDir = path.join(process.env.DATA_DIR || path.join(__dirname, '..'), 'uploads');
   const files = db.getDealerFilePaths(dealer.id);
   db.deleteDealer(dealer.id);
+  activity.log('dealer_removed', { adminEmail: req.session.admin_email || null, detail: `${dealer.dealership_name} (${dealer.email})` });
   for (const p of files) {
     fs.unlink(path.join(uploadsDir, path.basename(p)), () => {});
   }

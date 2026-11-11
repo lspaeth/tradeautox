@@ -7,6 +7,7 @@ const fs = require('fs');
 const db = require('./db'); // initializes schema
 const billing = require('./routes/billing');
 const { idleTimeout, IDLE_TIMEOUT_MS } = require('./lib/idle');
+const { requireCurrentTerms } = require('./lib/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,10 @@ app.use(session({
 // Idle auto-logout: 10 minutes with no activity ends the session (the
 // browser timer in the footer enforces the same limit visibly).
 app.use(idleTimeout);
+
+// Terms re-acceptance: dealers on an old Terms version are sent to accept
+// the current ones on their next page load.
+app.use(requireCurrentTerms);
 
 // Make auth state available to all views
 app.use((req, res, next) => {

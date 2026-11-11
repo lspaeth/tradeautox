@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+
+<h1>Updated Terms of Service</h1>
+<p>We've updated our Terms of Service (version <%= termsVersion %>). Please read the summary below and accept to keep using TradeAutoX.</p>
+
+<section class="panel">
+  <h2>What changed</h2>
+  <ul>
+    <% whatChanged.forEach(c => { %><li><%= c %></li><% }) %>
+  </ul>
+  <p><a href="/terms" target="_blank" rel="noopener">Read the full Terms of Service</a> — and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+</section>
+
+<form method="post" action="/terms/accept">
+  <button class="btn" type="submit">I accept the updated Terms</button>
+</form>
+<p class="muted small">Your acceptance is recorded with today's date, the same as at signup.</p>
+
+<%- include('partials/footer') %>

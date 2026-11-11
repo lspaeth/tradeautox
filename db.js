@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const { TERMS_VERSION } = require('./lib/terms');
 
 const dbPath = process.env.DB_PATH || path.join(process.env.DATA_DIR || __dirname, 'tradeautox.db');
 const db = new Database(dbPath);
@@ -196,6 +197,29 @@ CREATE TABLE IF NOT EXISTS admin_invites (
   used_at TEXT,
   created_by_email TEXT
 );
+
+-- Failed-login tracking for the lockout: 5 wrong tries = a 15-minute lock.
+-- One row per (email, kind); a successful login clears the row.
+CREATE TABLE IF NOT EXISTS login_attempts (
+  email TEXT NOT NULL,
+  kind TEXT NOT NULL, -- 'dealer' | 'admin'
+  attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (email, kind)
+);
+
+-- Audit trail: logins (good and bad), password changes, terms acceptances,
+-- and admin actions. Append-only — nothing in the app edits a row.
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  kind TEXT NOT NULL,
+  dealer_id INTEGER,
+  admin_email TEXT,
+  email TEXT,
+  detail TEXT
+);
 `);
 
 // Best-effort migration for databases created before terms_accepted_at existed.
@@ -337,13 +361,45 @@ try {
   if (!/duplicate column name/i.test(String(e.message))) throw e;
 }
 
+// Best-effort migrations: terms version + email verification on dealers.
+// terms_version NULL means "accepted an older version" — the dealer is
+// asked to accept the current Terms on their next login.
+for (const col of ['terms_version TEXT', 'email_verify_token TEXT', 'email_verify_expires TEXT']) {
+  try {
+    db.exec(`ALTER TABLE dealers ADD COLUMN ${col}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+try {
+  db.exec(`ALTER TABLE dealers ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`);
+  // Column is new: every dealer on file passed manual approval, so their
+  // emails are known-good — grandfather them as verified. (This UPDATE
+  // runs only in the same boot that added the column, so new signups
+  // after this stay unverified until they click their link.)
+  db.exec(`UPDATE dealers SET email_verified = 1`);
+} catch (e) {
+  if (!/duplicate column name/i.test(String(e.message))) throw e;
+}
+
+// Best-effort migrations: stale-listing tracking on listings.
+// stale_nudged_at = when the "still available?" nudge went out;
+// last_confirmed_at = when the seller last confirmed the car is still there.
+for (const col of ['stale_nudged_at TEXT', 'last_confirmed_at TEXT']) {
+  try {
+    db.exec(`ALTER TABLE listings ADD COLUMN ${col}`);
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e.message))) throw e;
+  }
+}
+
 // ---- dealers ----
 const createDealer = (d) => db.prepare(`
-  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, zip,
+  INSERT INTO dealers (dealership_name, contact_name, email, password_hash, phone, license_number, license_photo_path, terms_accepted_at, terms_version, email_verified, email_verify_token, email_verify_expires, zip,
     address, city, state, dealer_type, referred_by_dealer_id,
     ein, legal_name, dba, company_type, auction_access_id,
     dl_scanned_at, dl_name, dl_dob, dl_expires, dl_number, dl_address, dl_city, dl_state, dl_zip, dl_name_match, dl_expired)
-  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @zip,
+  VALUES (@dealership_name, @contact_name, @email, @password_hash, @phone, @license_number, @license_photo_path, @terms_accepted_at, @terms_version, @email_verified, @email_verify_token, @email_verify_expires, @zip,
     @address, @city, @state, @dealer_type, @referred_by_dealer_id,
     @ein, @legal_name, @dba, @company_type, @auction_access_id,
     @dl_scanned_at, @dl_name, @dl_dob, @dl_expires, @dl_number, @dl_address, @dl_city, @dl_state, @dl_zip, @dl_name_match, @dl_expired)
@@ -353,6 +409,7 @@ const createDealer = (d) => db.prepare(`
   dl_scanned_at: null, dl_name: null, dl_dob: null, dl_expires: null,
   dl_number: null, dl_address: null, dl_city: null, dl_state: null,
   dl_zip: null, dl_name_match: null, dl_expired: null,
+  terms_version: null, email_verified: 0, email_verify_token: null, email_verify_expires: null,
   ...d,
 });
 
@@ -617,6 +674,42 @@ const setListingStatus = (id, dealerId, status) =>
 const setListingStatusById = (id, status) =>
   db.prepare(`UPDATE listings SET status = ? WHERE id = ?`).run(status, id);
 
+// ---- stale listings: 30 days quiet, nudge, then hide 7 days later ----
+// A listing goes stale when neither its post date nor the seller's last
+// "still available" confirmation is within 30 days. Listings mid-sale
+// (open purchase intent) are never nudged or hidden.
+const STALE_AFTER_DAYS = 30;
+const EXPIRE_AFTER_NUDGE_DAYS = 7;
+
+const listStaleCandidates = () =>
+  db.prepare(`
+    SELECT l.*, d.email AS dealer_email, d.contact_name, d.dealership_name
+    FROM listings l JOIN dealers d ON d.id = l.dealer_id
+    WHERE l.status = 'active'
+      AND d.status = 'approved' AND d.membership_status IN ('active', 'past_due')
+      AND l.stale_nudged_at IS NULL
+      AND date(COALESCE(l.last_confirmed_at, l.created_at), '+' || ? || ' days') <= date('now')
+      AND NOT EXISTS (SELECT 1 FROM purchase_intents WHERE listing_id = l.id)
+  `).all(STALE_AFTER_DAYS);
+
+const listNudgedExpired = () =>
+  db.prepare(`
+    SELECT l.*, d.email AS dealer_email, d.contact_name, d.dealership_name
+    FROM listings l JOIN dealers d ON d.id = l.dealer_id
+    WHERE l.status = 'active'
+      AND l.stale_nudged_at IS NOT NULL
+      AND date(l.stale_nudged_at, '+' || ? || ' days') <= date('now')
+      AND NOT EXISTS (SELECT 1 FROM purchase_intents WHERE listing_id = l.id)
+  `).all(EXPIRE_AFTER_NUDGE_DAYS);
+
+const markListingNudged = (id) =>
+  db.prepare(`UPDATE listings SET stale_nudged_at = datetime('now') WHERE id = ?`).run(id);
+
+// Seller confirmed the car is still there: the 30-day clock restarts and
+// any nudge clears.
+const confirmListingAvailable = (id) =>
+  db.prepare(`UPDATE listings SET last_confirmed_at = datetime('now'), stale_nudged_at = NULL WHERE id = ?`).run(id);
+
 // ---- password resets (admin-assisted: dealer requests, admin issues temp password) ----
 const createPasswordReset = (dealerId) =>
   db.prepare(`INSERT INTO password_resets (dealer_id) VALUES (?)`).run(dealerId);
@@ -679,6 +772,71 @@ const setDealerPassword = (id, passwordHash) =>
 
 const setMustChangePassword = (id, val) =>
   db.prepare(`UPDATE dealers SET must_change_password = ? WHERE id = ?`).run(val ? 1 : 0, id);
+
+// ---- login lockout: 5 wrong tries = a 15-minute lock ----
+// The check runs before bcrypt (cheap, and a locked account never burns
+// CPU on password guesses). A successful login clears the row. An expired
+// lock clears the counter, so the next 5 tries are fresh.
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+
+const getLoginAttempt = (email, kind) =>
+  db.prepare(`SELECT * FROM login_attempts WHERE email = ? AND kind = ?`).get(email, kind);
+
+// Returns the lock expiry (ISO string) while the lock is live, else null.
+function isLoginLocked(email, kind) {
+  const row = getLoginAttempt(email, kind);
+  if (!row || !row.locked_until) return null;
+  if (new Date(row.locked_until).getTime() <= Date.now()) {
+    db.prepare(`DELETE FROM login_attempts WHERE email = ? AND kind = ?`).run(email, kind);
+    return null;
+  }
+  return row.locked_until;
+}
+
+// Record a failed login. Returns { attempts, lockedUntil, newlyLocked } —
+// newlyLocked is true only on the failure that trips the lock, so the
+// caller logs the lock once instead of on every blocked attempt.
+function recordLoginFailure(email, kind) {
+  const row = getLoginAttempt(email, kind);
+  const attempts = (row ? row.attempts : 0) + 1;
+  let lockedUntil = row ? row.locked_until : null;
+  let newlyLocked = false;
+  if (attempts >= MAX_LOGIN_ATTEMPTS && !lockedUntil) {
+    lockedUntil = new Date(Date.now() + LOCKOUT_MS).toISOString();
+    newlyLocked = true;
+  }
+  db.prepare(`
+    INSERT INTO login_attempts (email, kind, attempts, locked_until, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(email, kind) DO UPDATE SET attempts = ?, locked_until = ?, updated_at = datetime('now')
+  `).run(email, kind, attempts, lockedUntil, attempts, lockedUntil);
+  return { attempts, lockedUntil, newlyLocked };
+}
+
+const clearLoginAttempts = (email, kind) =>
+  db.prepare(`DELETE FROM login_attempts WHERE email = ? AND kind = ?`).run(email, kind);
+
+// ---- activity log (audit trail, append-only) ----
+const logActivity = ({ kind, dealerId = null, adminEmail = null, email = null, detail = null }) =>
+  db.prepare(`INSERT INTO activity_log (kind, dealer_id, admin_email, email, detail) VALUES (?, ?, ?, ?, ?)`)
+    .run(kind, dealerId, adminEmail, email, detail);
+
+const listRecentActivity = (limit = 50) =>
+  db.prepare(`SELECT * FROM activity_log ORDER BY created_at DESC, id DESC LIMIT ?`).all(limit);
+
+// ---- terms version + email verification ----
+const setDealerTermsVersion = (id, version) =>
+  db.prepare(`UPDATE dealers SET terms_version = ?, terms_accepted_at = datetime('now') WHERE id = ?`).run(version, id);
+
+const setDealerEmailVerified = (id) =>
+  db.prepare(`UPDATE dealers SET email_verified = 1, email_verify_token = NULL, email_verify_expires = NULL WHERE id = ?`).run(id);
+
+const setEmailVerifyToken = (id, token, expiresAt) =>
+  db.prepare(`UPDATE dealers SET email_verify_token = ?, email_verify_expires = ? WHERE id = ?`).run(token, expiresAt, id);
+
+const getDealerByVerifyToken = (token) =>
+  db.prepare(`SELECT * FROM dealers WHERE email_verify_token = ?`).get(token);
 
 // ---- dealer employee logins ----
 // The owner keeps logging in via the dealers table; employees live here.
@@ -838,6 +996,8 @@ async function ensureDemoDealer() {
       license_number: 'DEMO',
       license_photo_path: null,
       terms_accepted_at: new Date().toISOString(),
+      terms_version: TERMS_VERSION,
+      email_verified: 1,
       zip: '30339',
     });
     d = getDealerById(info.lastInsertRowid);
@@ -854,6 +1014,11 @@ module.exports = {
   setDealerStatus, setStripeCustomer, setMembership, setDealerPassword, setMustChangePassword,
   setDealerZip, setDealerAddress, listDealersByStatus, listAllDealers, getDealerFilePaths, deleteDealer,
   assignMemberNumber, getDealerByMemberNumber, backfillMemberNumbers,
+  MAX_LOGIN_ATTEMPTS, LOCKOUT_MS, getLoginAttempt, isLoginLocked, recordLoginFailure, clearLoginAttempts,
+  logActivity, listRecentActivity,
+  setDealerTermsVersion, setDealerEmailVerified, setEmailVerifyToken, getDealerByVerifyToken,
+  STALE_AFTER_DAYS, EXPIRE_AFTER_NUDGE_DAYS, listStaleCandidates, listNudgedExpired,
+  markListingNudged, confirmListingAvailable,
   createReferral, getReferralByReferred, listReferralsByReferrer, listAllReferrals,
   markReferralEarned, markReferralPendingGrant,
   addTradePartner, removeTradePartner, listTradePartners,
