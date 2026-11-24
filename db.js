@@ -582,6 +582,18 @@ const createListing = (l) => db.prepare(`
     @trim, @body_style, @drivetrain, @engine, @transmission, @fuel, @doors, @color, @title_status)
 `).run({ color: null, title_status: null, status: 'active', ...l });
 
+// Edit a listing's details (draft or live). Status is untouched — a draft
+// stays a draft, a live listing stays live. Dealer-scoped: a dealer can
+// only edit their own listings.
+const updateListing = (id, dealerId, l) => db.prepare(`
+  UPDATE listings SET make = @make, model = @model, year = @year, vin = @vin,
+    mileage = @mileage, price = @price, description = @description,
+    trim = @trim, body_style = @body_style, drivetrain = @drivetrain,
+    engine = @engine, transmission = @transmission, fuel = @fuel,
+    doors = @doors, color = @color, title_status = @title_status
+  WHERE id = @id AND dealer_id = @dealer_id
+`).run({ id, dealer_id: dealerId, ...l });
+
 const getActiveListingByVin = (dealerId, vin) =>
   db.prepare(`SELECT id FROM listings WHERE dealer_id = ? AND vin = ? AND status = 'active'`).get(dealerId, vin);
 
@@ -1077,7 +1089,7 @@ module.exports = {
   addTradePartner, removeTradePartner, listTradePartners,
   createWant, listWants, deleteWant, countWants, listWantsWithDealers,
   createPurchaseIntent, getPurchaseIntent, deletePurchaseIntent,
-  createListing, getActiveListingByVin, getDealerListingByVin, addListingPhoto, getListing, getListingPhotos,
+  createListing, updateListing, getActiveListingByVin, getDealerListingByVin, addListingPhoto, getListing, getListingPhotos,
   getListingPhotoCounts, getAuctionPhotoCounts,
   searchListings, getDealerListings, getFeaturedListing, setListingStatus, setListingStatusById,
   createPasswordReset, hasOpenPasswordReset, listOpenPasswordResets,

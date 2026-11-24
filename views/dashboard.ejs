@@ -316,12 +316,18 @@
             <% if (typeof canSell === 'undefined' || canSell) { %>
             <% if (l.status === 'draft') { %>
               <a class="btn btn-xs" href="/listings/<%= l.id %>/add-photos">Add photos</a>
+              <a class="btn btn-xs btn-ghost" href="/listings/<%= l.id %>/edit">Edit</a>
+              <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
+                <input type="hidden" name="status" value="removed">
+                <button class="btn btn-xs btn-ghost" type="submit">Remove</button>
+              </form>
             <% } else if (l.status === 'active') { %>
               <% if (l.staleNudged) { %>
               <form method="post" action="/listings/<%= l.id %>/confirm-available" style="display:inline">
                 <button class="btn btn-xs" type="submit">Still available</button>
               </form>
               <% } %>
+              <a class="btn btn-xs btn-ghost" href="/listings/<%= l.id %>/edit">Edit</a>
               <form method="post" action="/listings/<%= l.id %>/status" style="display:inline">
                 <input type="hidden" name="status" value="sold">
                 <button class="btn btn-xs" type="submit">Mark sold</button>

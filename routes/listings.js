@@ -5,7 +5,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db');
 const upload = require('../lib/upload');
 const { requireMember, requireMemberOrAdmin, requireSell, requireBuy, canSell } = require('../lib/auth');
-const { createListingFromRequest, collectPhotos, publishDraftIfReady, photoMinimumMessage, MIN_PHOTOS, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
+const { createListingFromRequest, cleanListingFields, collectPhotos, publishDraftIfReady, photoMinimumMessage, MIN_PHOTOS, daysOnSiteLabel, PAYMENT_METHODS } = require('../lib/listings');
 const { compressVehiclePhotos, compressVehiclePhotoBuffer } = require('../lib/images');
 const { decodeVin, isValidVin, cleanVin } = require('../lib/vin');
 const { rowsToObjects } = require('../lib/csv');
@@ -365,6 +365,46 @@ router.post('/:id/photos', requireMember, requireSell, (req, res) => {
       renderPage('Something went wrong adding those photos.');
     }
   });
+});
+
+// Edit a listing's details — drafts and live listings. Saving keeps the
+// listing's status: a draft stays a draft until its photos are complete,
+// a live listing stays live. Photos stay on the add-photos page, so the
+// edit form is details only (no file upload). Blocked while a sale is
+// pending — the deal sheet already states a price.
+router.get('/:id/edit', requireMember, requireSell, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  if (!['draft', 'active'].includes(listing.status)) return res.redirect('/dashboard');
+  if (db.getPurchaseIntent(listing.id)) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('This vehicle has a pending sale — cancel the sale before editing it.'));
+  }
+  res.render('listing-new', {
+    error: null, formAction: `/listings/${listing.id}/edit`,
+    heading: 'Edit listing', isAdmin: false, listing, isEdit: true,
+  });
+});
+
+router.post('/:id/edit', requireMember, requireSell, (req, res) => {
+  const listing = db.getListing(req.params.id);
+  if (!listing || listing.dealer_id !== req.dealer.id) return res.status(404).render('404');
+  if (!['draft', 'active'].includes(listing.status)) return res.redirect('/dashboard');
+  if (db.getPurchaseIntent(listing.id)) {
+    return res.redirect(`/listings/${listing.id}?error=` + encodeURIComponent('This vehicle has a pending sale — cancel the sale before editing it.'));
+  }
+  try {
+    const fields = cleanListingFields(req.body);
+    db.updateListing(listing.id, req.dealer.id, fields);
+  } catch (err) {
+    return res.status(400).render('listing-new', {
+      error: err.message, formAction: `/listings/${listing.id}/edit`,
+      heading: 'Edit listing', isAdmin: false, listing, isEdit: true,
+    });
+  }
+  if (listing.status === 'draft') {
+    return res.redirect(`/listings/${listing.id}/add-photos?notice=` + encodeURIComponent('Changes saved — still a draft until the photos are complete.'));
+  }
+  res.redirect(`/listings/${listing.id}?notice=` + encodeURIComponent('Changes saved.'));
 });
 
 // Listing detail — members and admin

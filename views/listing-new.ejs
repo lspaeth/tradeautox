@@ -1,20 +1,26 @@
 <%- include('partials/header') %>
+<% const editMode = typeof isEdit !== 'undefined' && isEdit; %>
+<% const l = typeof listing !== 'undefined' ? listing : null; %>
 
 <h1><%= heading %></h1>
 <% if (isAdmin) { %>
   <p class="muted">Demo listing — it will appear on the board under the seller <strong>TradeAutoX (demo)</strong>.</p>
+<% } else if (editMode && l && l.status === 'draft') { %>
+  <p class="muted">Changes save to the draft — it stays off the board until the photos are complete (15+, at least 5 exterior and 5 interior).</p>
+<% } else if (editMode) { %>
+  <p class="muted">Changes save to the live listing.</p>
 <% } else { %>
   <p class="muted">Unlimited listings included with your membership. 15–20 photos to go live — at least 5 exterior and 5 interior.</p>
 <% } %>
 
 <% if (error) { %><p class="alert error"><%= error %></p><% } %>
 
-<form class="form" method="post" action="<%= formAction %>" enctype="multipart/form-data">
+<form class="form" method="post" action="<%= formAction %>"<% if (!editMode) { %> enctype="multipart/form-data"<% } %>>
   <div class="row">
     <label>VIN <span class="muted small">(type it, scan the barcode, or snap a photo — we'll fill in the rest)</span>
       <span class="vin-wrap">
         <input name="vin" id="vin-input" maxlength="17" autocapitalize="characters" spellcheck="false"
-               placeholder="17-character VIN" style="text-transform:uppercase">
+               placeholder="17-character VIN" style="text-transform:uppercase" value="<%= l ? l.vin : '' %>">
         <button type="button" class="btn btn-sm" id="vin-decode-btn">Decode</button>
         <button type="button" class="btn btn-sm btn-ghost" id="vin-scan-btn">📷 Scan VIN</button>
       </span>
@@ -22,24 +28,25 @@
   </div>
   <p id="vin-status" class="muted small" aria-live="polite"></p>
   <div class="row">
-    <label>Make *<input name="make" id="f-make" required></label>
-    <label>Model *<input name="model" id="f-model" required></label>
-    <label>Year *<input name="year" id="f-year" inputmode="numeric" required></label>
+    <label>Make *<input name="make" id="f-make" value="<%= l ? l.make : '' %>" required></label>
+    <label>Model *<input name="model" id="f-model" value="<%= l ? l.model : '' %>" required></label>
+    <label>Year *<input name="year" id="f-year" inputmode="numeric" value="<%= l ? l.year : '' %>" required></label>
   </div>
   <div class="row">
-    <label>Trim<input name="trim" id="f-trim"></label>
-    <label>Mileage<input name="mileage" inputmode="numeric"></label>
-    <label>Asking price (USD) *<input name="price" inputmode="numeric" required></label>
+    <label>Trim<input name="trim" id="f-trim" value="<%= l ? l.trim : '' %>"></label>
+    <label>Mileage<input name="mileage" inputmode="numeric" value="<%= l && l.mileage != null ? l.mileage : '' %>"></label>
+    <label>Asking price (USD) *<input name="price" inputmode="numeric" value="<%= l ? l.price : '' %>" required></label>
   </div>
-  <input type="hidden" name="body_style" id="f-body_style">
-  <input type="hidden" name="drivetrain" id="f-drivetrain">
-  <input type="hidden" name="engine" id="f-engine">
-  <input type="hidden" name="transmission" id="f-transmission">
-  <input type="hidden" name="fuel" id="f-fuel">
-  <input type="hidden" name="doors" id="f-doors">
+  <input type="hidden" name="body_style" id="f-body_style" value="<%= l ? l.body_style : '' %>">
+  <input type="hidden" name="drivetrain" id="f-drivetrain" value="<%= l ? l.drivetrain : '' %>">
+  <input type="hidden" name="engine" id="f-engine" value="<%= l ? l.engine : '' %>">
+  <input type="hidden" name="transmission" id="f-transmission" value="<%= l ? l.transmission : '' %>">
+  <input type="hidden" name="fuel" id="f-fuel" value="<%= l ? l.fuel : '' %>">
+  <input type="hidden" name="doors" id="f-doors" value="<%= l ? l.doors : '' %>">
   <label>Description
-    <textarea name="description" rows="5" placeholder="Condition, options, history, title status…"></textarea>
+    <textarea name="description" rows="5" placeholder="Condition, options, history, title status…"><%= l ? l.description : '' %></textarea>
   </label>
+  <% if (!editMode) { %>
   <label>Exterior photos <span class="muted small">(up to 10 — outside shots: front, sides, rear)</span>
     <input type="file" id="photos-exterior" name="photos_exterior" accept="image/*" capture="environment" multiple>
   </label>
@@ -51,7 +58,10 @@
     <input type="file" name="verification_report" accept="application/pdf,image/*">
   </label>
   <p class="muted small">Listings with a verification report get a <strong>Verified</strong> badge and sell with more confidence.</p>
-  <button class="btn" type="submit">Post listing</button>
+  <% } else if (l && l.status === 'draft') { %>
+  <p class="muted small">Photos live on the <a href="/listings/<%= l.id %>/add-photos">add-photos page</a> — this listing goes live once it holds 15+ photos (5 exterior, 5 interior).</p>
+  <% } %>
+  <button class="btn" type="submit"><%= editMode ? 'Save changes' : 'Post listing' %></button>
 </form>
 
 <script>
