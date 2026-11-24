@@ -118,13 +118,13 @@ router.post('/signup', upload.single('license_photo'), async (req, res) => {
     // it to a real dealer; anything else is ignored silently — a bad ref
     // must never error a signup. Self-referral can't happen: the email
     // check above guarantees the applicant isn't an existing dealer, and
-    // the demo dealer can't refer anyone.
+    // demo dealers can't refer anyone.
     let referredByDealerId = null;
     const refNum = /^\d+$/.test(String(req.body.ref || '').trim())
       ? parseInt(String(req.body.ref).trim(), 10) : null;
     if (refNum) {
       const referrer = db.getDealerByMemberNumber(refNum);
-      if (referrer && referrer.email !== db.DEMO_DEALER_EMAIL) {
+      if (referrer && !db.isDemoDealerEmail(referrer.email)) {
         referredByDealerId = referrer.id;
       }
     }

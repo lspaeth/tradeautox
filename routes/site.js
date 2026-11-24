@@ -38,7 +38,7 @@ router.get('/', (req, res) => {
         mileage: row.mileage || null,
         photo: row.photo || null,
         verified: !!row.verification_report,
-        is_demo: row.dealer_email === db.DEMO_DEALER_EMAIL,
+        is_demo: db.isDemoDealerEmail(row.dealer_email),
       };
     }
   } catch (e) { featured = null; }

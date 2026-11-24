@@ -161,7 +161,7 @@
           <form method="post" action="/admin/dealers/<%= d.id %>/impersonate" style="display:inline">
             <button class="btn btn-xs" type="submit" title="See the site exactly as this dealer sees it">View as</button>
           </form>
-          <% if (d.email !== demoEmail) { %>
+          <% if (!demoEmails.includes(d.email)) { %>
             <% if (d.status === 'approved') { %>
               <form method="post" action="/admin/dealers/<%= d.id %>/suspend" style="display:inline">
                 <button class="btn btn-xs btn-ghost" type="submit" onclick="return confirm('Suspend this dealer? They will be locked out and their listings hidden until you reactivate them, and their subscription billing will be paused (no charges while suspended).')">Suspend</button>

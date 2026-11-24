@@ -78,4 +78,6 @@ app.use((req, res) => res.status(404).render('404'));
 
 app.listen(PORT, () => {
   console.log(`TradeAutoX listening on http://localhost:${PORT}`);
+  // Demo dealers (demo@ + demo1@ for Mike) exist from the first boot after deploy.
+  db.ensureDemoDealer().catch((e) => console.error('ensureDemoDealer failed:', e.message));
 });

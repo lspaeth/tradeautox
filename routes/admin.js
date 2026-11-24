@@ -145,12 +145,12 @@ router.get('/', requireAdmin, (req, res) => {
     pending: db.listDealersByStatus('pending'),
     members,
     // Dealers who stopped paying: card failing (past_due) or subscription
-    // ended (inactive). The demo dealer never bills, so it's excluded.
+    // ended (inactive). Demo dealers never bill, so they're excluded.
     paymentIssues: members.filter((d) =>
-      d.email !== db.DEMO_DEALER_EMAIL && d.status !== 'rejected' &&
+      !db.isDemoDealerEmail(d.email) && d.status !== 'rejected' &&
       (d.membership_status === 'past_due' || d.membership_status === 'inactive')),
     resets: db.listOpenPasswordResets(),
-    demoEmail: db.DEMO_DEALER_EMAIL,
+    demoEmails: db.DEMO_DEALER_EMAILS,
     admins: db.listAdmins(),
     invites: db.listOpenAdminInvites().map((i) => ({ ...i, link: `${baseUrl}/admin/setup/${i.token}` })),
     referrals: db.listAllReferrals(),
@@ -218,11 +218,11 @@ router.post('/dealers/:id/reject', requireAdmin, (req, res) => {
 // Same discipline as dealer removal: if the dealer has a live subscription
 // and the pause/resume can't be verified in Stripe, the state change aborts
 // so access and billing never silently desync. Dealers with no subscription
-// suspend/reactivate with no Stripe call. The demo dealer is protected —
-// demo posting depends on it.
+// suspend/reactivate with no Stripe call. Demo dealers are protected —
+// demo posting depends on them.
 router.post('/dealers/:id/suspend', requireAdmin, async (req, res) => {
   const dealer = db.getDealerById(req.params.id);
-  if (!dealer || dealer.email === db.DEMO_DEALER_EMAIL || dealer.status !== 'approved') {
+  if (!dealer || db.isDemoDealerEmail(dealer.email) || dealer.status !== 'approved') {
     return res.redirect('/admin');
   }
 
@@ -256,7 +256,7 @@ router.post('/dealers/:id/suspend', requireAdmin, async (req, res) => {
 
 router.post('/dealers/:id/reactivate', requireAdmin, async (req, res) => {
   const dealer = db.getDealerById(req.params.id);
-  if (!dealer || dealer.email === db.DEMO_DEALER_EMAIL || dealer.status !== 'suspended') {
+  if (!dealer || db.isDemoDealerEmail(dealer.email) || dealer.status !== 'suspended') {
     return res.redirect('/admin');
   }
 
@@ -291,11 +291,11 @@ router.post('/dealers/:id/reactivate', requireAdmin, async (req, res) => {
 // with everything attached to it. A live Stripe subscription is canceled
 // first so a removed dealer is never billed for a deleted account; if Stripe
 // can't confirm the cancel, removal aborts and nothing is deleted. The demo
-// dealer is protected — demo posting depends on it.
+// dealers are protected — demo posting depends on them.
 router.post('/dealers/:id/remove', requireAdmin, async (req, res) => {
   const dealer = db.getDealerById(req.params.id);
   if (!dealer) return res.redirect('/admin');
-  if (dealer.email === db.DEMO_DEALER_EMAIL) return res.redirect('/admin');
+  if (db.isDemoDealerEmail(dealer.email)) return res.redirect('/admin');
 
   if (dealer.stripe_subscription_id && stripeConfigured()) {
     try {

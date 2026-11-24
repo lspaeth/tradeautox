@@ -663,9 +663,9 @@ const getFeaturedListing = () =>
       (SELECT path FROM listing_photos WHERE listing_id = l.id ORDER BY id LIMIT 1) AS photo
     FROM listings l JOIN dealers d ON d.id = l.dealer_id
     WHERE l.status = 'active' AND d.status = 'approved' AND d.membership_status IN ('active', 'past_due')
-    ORDER BY (d.email = ?) ASC, l.created_at DESC
+    ORDER BY (d.email IN (?, ?)) ASC, l.created_at DESC
     LIMIT 1
-  `).get(DEMO_DEALER_EMAIL);
+  `).get(...DEMO_DEALER_EMAILS);
 
 const setListingStatus = (id, dealerId, status) =>
   db.prepare(`UPDATE listings SET status = ? WHERE id = ? AND dealer_id = ?`).run(status, id, dealerId);
@@ -1022,33 +1022,44 @@ const markNotificationsRead = (dealerId) =>
   db.prepare(`UPDATE notifications SET read_at = ? WHERE dealer_id = ? AND read_at IS NULL`)
     .run(new Date().toISOString(), dealerId);
 
-// ---- demo dealer (used for admin-posted demo listings) ----
+// ---- demo dealers (admin-posted demo listings + Mike's login) ----
+// demo@ is the original demo seller; demo1@ is Mike Zimmerman's demo login.
+// Both are approved + active, never billed, protected from suspend/remove,
+// and their listings are flagged as demo on the board.
 const DEMO_DEALER_EMAIL = 'demo@tradeautox.com';
+const DEMO_DEALER_EMAILS = ['demo@tradeautox.com', 'demo1@tradeautox.com'];
+const isDemoDealerEmail = (email) => DEMO_DEALER_EMAILS.includes(email);
+const DEMO_DEALERS = [
+  { email: 'demo@tradeautox.com', dealership_name: 'TradeAutoX (demo)', contact_name: 'TradeAutoX' },
+  { email: 'demo1@tradeautox.com', dealership_name: 'TradeAutoX (demo 1)', contact_name: 'Mike Zimmerman' },
+];
 async function ensureDemoDealer() {
-  let d = getDealerByEmail(DEMO_DEALER_EMAIL);
-  if (!d) {
-    const bcrypt = require('bcryptjs');
-    const crypto = require('crypto');
-    const info = createDealer({
-      dealership_name: 'TradeAutoX (demo)',
-      contact_name: 'TradeAutoX',
-      email: DEMO_DEALER_EMAIL,
-      password_hash: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 12),
-      phone: '',
-      license_number: 'DEMO',
-      license_photo_path: null,
-      terms_accepted_at: new Date().toISOString(),
-      terms_version: TERMS_VERSION,
-      email_verified: 1,
-      zip: '30339',
-    });
-    d = getDealerById(info.lastInsertRowid);
+  const bcrypt = require('bcryptjs');
+  const crypto = require('crypto');
+  for (const demo of DEMO_DEALERS) {
+    let d = getDealerByEmail(demo.email);
+    if (!d) {
+      const info = createDealer({
+        dealership_name: demo.dealership_name,
+        contact_name: demo.contact_name,
+        email: demo.email,
+        password_hash: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 12),
+        phone: '',
+        license_number: 'DEMO',
+        license_photo_path: null,
+        terms_accepted_at: new Date().toISOString(),
+        terms_version: TERMS_VERSION,
+        email_verified: 1,
+        zip: '30339',
+      });
+      d = getDealerById(info.lastInsertRowid);
+    }
+    if (d.status !== 'approved') setDealerStatus(d.id, 'approved');
+    if (d.membership_status !== 'active') setMembership(d.id, 'active');
+    if (!d.zip) setDealerZip(d.id, '30339');
   }
-  if (d.status !== 'approved') setDealerStatus(d.id, 'approved');
-  if (d.membership_status !== 'active') setMembership(d.id, 'active');
-  if (!d.zip) setDealerZip(d.id, '30339');
-  backfillMemberNumbers(); // a lazily-created demo dealer gets the next ID
-  return getDealerById(d.id);
+  backfillMemberNumbers(); // lazily-created demo dealers get the next IDs
+  return getDealerById(getDealerByEmail(DEMO_DEALER_EMAIL).id);
 }
 
 module.exports = {
@@ -1079,5 +1090,5 @@ module.exports = {
   getDealerAuctions, getAuctionBids, getHighBid, placeBid, extendAuction,
   setAuctionStatus, acceptAuctionBid, getBidById, listActiveDealers,
   createNotification, listUnreadNotifications, markNotificationsRead,
-  ensureDemoDealer, DEMO_DEALER_EMAIL,
+  ensureDemoDealer, DEMO_DEALER_EMAIL, DEMO_DEALER_EMAILS, isDemoDealerEmail,
 };
